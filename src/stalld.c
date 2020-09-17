@@ -143,7 +143,7 @@ char *config_monitored_cpus;
 /*
  * boolean to choose between deadline and fifo
  */
-int use_deadline;
+int boost_policy;
 
 /*
  * print any error messages and exit
@@ -742,13 +742,13 @@ int boost_with_fifo(int pid)
 
 	memset(&attr, 0, sizeof(attr));
 	attr.size = sizeof(attr);
-	attr.sched_policy   = SCHED_DEADLINE;
+	attr.sched_policy   = SCHED_FIFO;
 	attr.sched_priority = config_fifo_priority;
 
 	ret = sched_setattr(pid, &attr, flags);
 	if (ret < 0) {
 	    log_msg("boost_with_fifo failed to boost pid %d: %s\n", pid, strerror(errno));
-	    return 1;
+	    return ret;
 	}
 	return ret;
 }
@@ -828,7 +828,7 @@ int boost_starving_task(int pid)
 	/*
 	 * Boost.
 	 */
-	if (use_deadline) {
+	if (boost_policy == SCHED_DEADLINE) {
 		ret = boost_with_deadline(pid);
 		if (ret < 0)
 			return ret;
@@ -1267,9 +1267,11 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 }
 
 
-int check_for_deadline(void)
+int check_policies(void)
 {
 	int ret;
+	int saved_runtime = config_dl_runtime;
+	int boosted = SCHED_DEADLINE;
 	struct sched_attr attr;
 
 	/*
@@ -1278,18 +1280,45 @@ int check_for_deadline(void)
 	 */
 	if (config_force_fifo) {
 		log_msg("forcing SCHED_FIFO for boosting\n");
-		return 0;
+		return SCHED_FIFO;
 	}
 
+	// set runtime to half of period
+	config_dl_runtime = config_dl_period / 2;
+
+	// save off the current policy
 	if (get_current_policy(0, &attr))
-		die("check_for_deadline: unable to get scheduling policy!");
-	ret = boost_with_deadline(0) == 0 ? 1 : 0;
-	restore_policy(0, &attr);
-	if (ret)
+		die("check_policies: unable to get scheduling policy!");
+
+	// try boosting to SCHED_DEADLINE
+	ret = boost_with_deadline(0);
+	if (ret < 0) {
+		// try boosting with fifo to see if we have permission
+		ret = boost_with_fifo(0);
+		if (ret < 0) {
+			log_msg("check_policies: unable to change policy to either deadline or fifo,"
+				"defaulting to logging only\n");
+			config_log_only = 1;
+			boosted = 0;
+		}
+		else
+			boosted = SCHED_FIFO;
+	}
+	// if we successfully boosted to something, restore the old policy
+	if (boosted) {
+		ret = restore_policy(0, &attr);
+		// if we can't restore the policy then quit now
+		if (ret < 0)
+			die("check_policies: unable to restore policy: %s\n", strerror(errno));
+ 	}
+
+	// restore the actual runtime value
+	config_dl_runtime = saved_runtime;
+	if (boosted == SCHED_DEADLINE)
 		log_msg("using SCHED_DEADLINE for boosting\n");
-	else
+	else if (boosted == SCHED_FIFO)
 		log_msg("using SCHED_FIFO for boosting\n");
-	return ret;
+	return boosted;
 }
 
 int main(int argc, char **argv)
@@ -1302,7 +1331,7 @@ int main(int argc, char **argv)
 	/*
 	 * see if deadline scheduler is available
 	 */
-	use_deadline = check_for_deadline();
+	boost_policy = check_policies();
 
 	nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (nr_cpus < 1)
