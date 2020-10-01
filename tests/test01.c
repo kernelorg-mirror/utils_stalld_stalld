@@ -49,6 +49,10 @@ static void *blocker(void *arg);
 
 static void process_command_line(int argc, char **argv);
 
+static int allow_signal(int signum);
+static void inthandler(int signo, siginfo_t *info, void *extra);
+static void set_sig_handler();
+
 /* thread ids */
 static pthread_t blocker_tid;
 static pthread_t blockee_tid;
@@ -286,6 +290,11 @@ int main (int argc, char **argv)
 	/* handle the command line options */
 	process_command_line(argc, argv);
 
+	/* setup to handle SIGINT */
+	allow_signal(SIGINT);
+	set_sig_handler();
+
+
 	/* set up our ready barrier */
 	status = pthread_barrier_init(&all_threads_ready, NULL, 3);
 	if ((status ) != 0) {
@@ -357,4 +366,73 @@ int main (int argc, char **argv)
 
 	printf("test completed successfully!\n");
 	exit(0);
+}
+
+/*
+ * SIGINT handler for main
+ */
+static void inthandler (int signo, siginfo_t *info, void *extra)
+{
+	debug("got SIGINT\n");
+	if (blocker_tid) {
+		debug("sending SIGTERM to blocker\n");
+		pthread_kill(blocker_tid, SIGTERM);
+	}
+	if (blockee_tid) {
+		debug("sending SIGTERM to blockee\n");
+		pthread_kill(blockee_tid, SIGTERM);
+	}
+	debug("exiting due to SIGINT\n");
+	exit(-1);
+}
+
+static void set_sig_handler()
+{
+	struct sigaction action;
+	action.sa_flags = SA_SIGINFO;
+	action.sa_sigaction = inthandler;
+	if (sigaction(SIGINT, &action, NULL) == -1) {
+		error("error setting SIGINT handler: %s\n",
+		      strerror(errno));
+		exit(errno);
+	}
+}
+
+/*
+ * block all signals except the specified input signal
+ */
+static int allow_signal(int signum)
+{
+	int status;
+	sigset_t sigset;
+
+	/* mask off all signals */
+	status = sigfillset(&sigset);
+	if (status) {
+		error("setting up full signal set %s\n", strerror(status));
+		return status;
+	}
+	status = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (status) {
+		error("setting signal mask: %s\n", strerror(status));
+		return status;
+	}
+
+	/* now allow signum to be delivered */
+	status = sigemptyset(&sigset);
+	if (status) {
+		error("creating empty signal set: %s\n", strerror(status));
+		return status;
+	}
+	status = sigaddset(&sigset, signum);
+	if (status) {
+		error("adding %d to signal set: %s\n", signum, strerror(status));
+		return status;
+	}
+	status = pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
+	if (status) {
+		error("unblocking signal %d: %s\n", signum, strerror(status));
+		return status;
+	}
+	return 0;
 }
