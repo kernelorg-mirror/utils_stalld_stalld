@@ -299,13 +299,13 @@ int main (int argc, char **argv)
 
 	debug("main:  testcpu: %d\n", testcpu);
 
-	if (setup_blocker() <= 0) {
+	if (setup_blocker() != 0) {
 		error("setting up blocker failed\n");
 		exit(errno);
 	}
 	debug("main: blocker thread started (tid: %ld)\n", blocker_tid);
 
-	if (setup_blockee() <= 0) {
+	if (setup_blockee() != 0) {
 		error("setting up blockee failed\n");
 		exit(errno);
 	}
