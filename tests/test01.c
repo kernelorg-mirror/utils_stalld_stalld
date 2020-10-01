@@ -55,7 +55,7 @@ static pthread_t blockee_tid;
 
 #define BUFFERSIZE 1024
 
-void debug(const char *fmt, ...)
+static void debug(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -66,6 +66,16 @@ void debug(const char *fmt, ...)
 	}
 }
 
+static void error(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	if (errno)
+		fputs(strerror(errno), stderr);
+}
 
 static int isonline(int cpu)
 {
@@ -110,13 +120,13 @@ static int setup_thread(pthread_t *id, int cpu, int policy, int priority, void *
 	*id = 0;
 	status = pthread_attr_init(&attr);
 	if (status != 0) {
-		fprintf(stderr, "failed to initialize pthread attribute struct");
+		error("failed to initialize pthread attribute struct");
 		return status;
 	}
 
 	status = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
 	if (status != 0) {
-		fprintf(stderr, "failed to set attr PTHREAD_EXPLICIT_SCHED\n");
+		error("failed to set attr PTHREAD_EXPLICIT_SCHED\n");
 		return status;
 	}
 
@@ -124,13 +134,15 @@ static int setup_thread(pthread_t *id, int cpu, int policy, int priority, void *
 	CPU_SET(cpu, &cpuset);
 	status = pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset);
 	if (status != 0) {
-		fprintf(stderr, "failed to set blocker affinity to cpu %d\n", cpu);
+		error("failed to set blocker affinity to cpu %d: %s\n",
+			cpu, strerror(errno));
 		return status;
 	}
 
 	status = pthread_attr_setschedpolicy(&attr, policy);
 	if (status != 0) {
-		fprintf(stderr, "failed to set policy to %d\n", policy);
+		error("failed to set policy to %d: %s\n",
+			policy, strerror(errno));
 		return status;
 	}
 
@@ -140,14 +152,15 @@ static int setup_thread(pthread_t *id, int cpu, int policy, int priority, void *
 		param.sched_priority = priority;
 		status = pthread_attr_setschedparam(&attr, &param);
 		if (status != 0) {
-			fprintf(stderr, "failed to set priority to %d\n", priority);
+			error("failed to set priority to %d: %s\n",
+				priority, strerror(errno));
 			return status;
 		}
 	}
 
 	status = pthread_create(&tid, &attr, routine, NULL);
 	if (status != 0) {
-		fprintf(stderr, "failed to create thread\n");
+		error("failed to create thread: %s\n", strerror(status));
 		return status;
 	}
 	*id = tid;
@@ -157,14 +170,22 @@ static int setup_thread(pthread_t *id, int cpu, int policy, int priority, void *
 static int setup_blocker(void)
 {
 	int status = setup_thread(&blocker_tid, testcpu, SCHED_FIFO, blockerprio, blocker);
-	printf("blocker id: %ld\n", blocker_tid);
+	if (status) {
+		error("failed to setup blocker thread\n");
+		exit(status);
+	}
+	debug("blocker thread id: %ld\n", blocker_tid);
 	return status;
 }
 
 static int setup_blockee(void)
 {
 	int status = setup_thread(&blockee_tid, testcpu, SCHED_OTHER, 0, blockee);
-	printf("blockee id: %ld\n", blockee_tid);
+	if (status) {
+		error("failed to create blockee thread\n");
+		exit(status);
+	}
+	debug("blockee thread id: %ld\n", blockee_tid);
 	return status;
 }
 
@@ -207,6 +228,7 @@ static void process_command_line(int argc, char **argv)
 			break;
 		case 'd':
 			debugging = 1;
+			verbose = 1;
 			break;
 		}
 	}
@@ -223,11 +245,15 @@ static void *blockee(void *arg)
 	debug("blockee: running\n");
 
 	if (ret != PTHREAD_BARRIER_SERIAL_THREAD && ret != 0) {
-		perror("barrier wait in blocker failed");
+		error("barrier wait in blocker failed");
 		return (void *) -1;
 	}
-	while(blocked)
+	while(blocked > 0) {
+		debug("blockee: executing loop body, blocked==%d\n",
+		      blocked);
 		blocked--;
+	}
+	debug("blockee: finished!\n");
 	return 0;
 }
 
@@ -239,15 +265,16 @@ static void *blocker(void *arg)
 {
 	int ret = pthread_barrier_wait(&all_threads_ready);
 
-	debug("blocker: running\n");
-
 	if (ret != PTHREAD_BARRIER_SERIAL_THREAD && ret != 0) {
-		perror("barrier wait in blocker failed");
+		error("barrier wait in blocker failed");
 		return (void *) -1;
 	}
+	debug("blocker: running\n");
 
 	while(blocked > 0)
 		;
+
+	debug("blocker: finished!\n");
 	return 0;
 }
 
@@ -262,7 +289,7 @@ int main (int argc, char **argv)
 	/* set up our ready barrier */
 	status = pthread_barrier_init(&all_threads_ready, NULL, 3);
 	if ((status ) != 0) {
-		perror("pthread_barrier_init");
+		error("pthread_barrier_init");
 		exit(errno);
 	}
 
@@ -270,64 +297,63 @@ int main (int argc, char **argv)
 	if (testcpu == -1)
 		testcpu = pick_cpu();
 
-	debug("testcpu: %d\n", testcpu);
+	debug("main:  testcpu: %d\n", testcpu);
 
-	CPU_ZERO(&cpuset);
-	status = sched_getaffinity(0, sizeof(cpuset), &cpuset);
-	if (status < 0) {
-		perror("Error getting main affinity");
+	if (setup_blocker() <= 0) {
+		error("setting up blocker failed\n");
 		exit(errno);
 	}
+	debug("main: blocker thread started (tid: %ld)\n", blocker_tid);
 
-	if (setup_blocker() < 0) {
-		perror("setting up blocker failed");
+	if (setup_blockee() <= 0) {
+		error("setting up blockee failed\n");
 		exit(errno);
 	}
-	debug("setup blocker thread (tid: %ld)\n", blocker_tid);
-
-	if (setup_blockee() < 0) {
-		perror("setting up blockee failed");
-		exit(errno);
-	}
-	debug("setup blockee thread (tid: %ld)\n", blockee_tid);
+	debug("main: blockee thread started (tid: %ld)\n", blockee_tid);
 
 	/*
 	 * ensure that main doesn't run on the test cpu
 	 */
+	debug("set main affinity to not use cpu %d\n", testcpu);
+	CPU_ZERO(&cpuset);
+	status = sched_getaffinity(0, sizeof(cpuset), &cpuset);
+	if (status < 0) {
+		error("Error getting main affinity");
+		exit(errno);
+	}
 	CPU_CLR(testcpu, &cpuset);
 	status = sched_setaffinity(0, sizeof(cpuset), &cpuset);
 	if (status < 0) {
-		perror("Error setting original affinity");
+		error("main: Error setting original affinity");
 		exit(errno);
 	}
-	debug("set main affinity to not use cpu %d\n", testcpu);
 
 	/*
 	 * start the blocker and blockee
 	 */
-	debug("calling pthread_barrier_wait to start threads\n");
+	debug("main: calling pthread_barrier_wait to start threads\n");
 
 	status = pthread_barrier_wait(&all_threads_ready);
 	if (status != PTHREAD_BARRIER_SERIAL_THREAD && status != 0) {
-		perror("Error in main from pthread_barrier_wait");
+		error("main error from pthread_barrier_wait");
 		exit(errno);
 	}
 
-	debug("joining with blocker\n");
+	debug("main: waiting for blocker to exit\n");
 	status = pthread_join(blocker_tid, NULL);
 	if (status < 0) {
-		perror("Error joining blocker thread");
+		error("Error joining blocker thread");
 		exit(errno);
 	}
-	debug("Joined blocker\n");
+	debug("main: Joined blocker\n");
 
-	debug("joining with blockee\n");
+	debug("main: waiting for blockee to exit\n");
 	status = pthread_join(blockee_tid, NULL);
 	if (status < 0) {
-		perror("Error joining blockee thread");
+		error("Error joining blockee thread");
 		exit(errno);
 	}
-	debug("Joined blockee\n");
+	debug("main: Joined blockee\n");
 
 	printf("test completed successfully!\n");
 	exit(0);
