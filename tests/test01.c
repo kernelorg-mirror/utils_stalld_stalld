@@ -286,6 +286,7 @@ int main (int argc, char **argv)
 {
 	int status;
 	cpu_set_t cpuset;
+	struct sched_param param;
 
 	/* handle the command line options */
 	process_command_line(argc, argv);
@@ -334,6 +335,19 @@ int main (int argc, char **argv)
 	status = sched_setaffinity(0, sizeof(cpuset), &cpuset);
 	if (status < 0) {
 		error("main: Error setting original affinity");
+		exit(errno);
+	}
+
+	/*
+	 * make our main thread run SCHED_FIFO priority one greater
+	 * than the blocker thread (just for safety's sake)
+	 */
+	memset(&param, 0, sizeof(param));
+	param.sched_priority = blockerprio+1;
+	status = sched_setscheduler(0, SCHED_FIFO, &param);
+	if (status < 0) {
+		error("main: error setting scheduler policy to FIFO: %s",
+		      strerror(errno));
 		exit(errno);
 	}
 
