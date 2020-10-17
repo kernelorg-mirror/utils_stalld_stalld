@@ -36,72 +36,7 @@
 #include <unistd.h>
 #include <linux/sched.h>
 
-#define BUFFER_SIZE		(1024 * 1000)
-#define MAX_WAITING_PIDS	30
-
-/*
- * See kernel/sched/debug.c:print_task().
- */
-struct task_info {
-	int pid;
-	int prio;
-	int ctxsw;
-	time_t since;
-	char comm[15];
-};
-
-struct cpu_info {
-	int id;
-	int nr_running;
-	int nr_rt_running;
-	int ctxsw;
-	int nr_waiting_tasks;
-	int thread_running;
-	struct task_info *starving;
-	pthread_t thread;
-};
-
-#ifdef __x86_64__
-# define __NR_sched_setattr 314
-# define __NR_sched_getattr 315
-#elif __i386__
-# define __NR_sched_setattr 351
-# define __NR_sched_getattr 352
-#elif __arm__
-# define __NR_sched_setattr 380
-# define __NR_sched_getattr 381
-#elif __aarch64__
-# define __NR_sched_setattr 274
-# define __NR_sched_getattr 275
-#elif __powerpc__
-# define __NR_sched_setattr 355
-# define __NR_sched_getattr 356
-#elif __s390x__
-# define __NR_sched_setattr 345
-# define __NR_sched_getattr 346
-#endif
-
-struct sched_attr {
-	uint32_t size;
-	uint32_t sched_policy;
-	uint64_t sched_flags;
-	int32_t sched_nice;
-	uint32_t sched_priority;
-	uint64_t sched_runtime;
-	uint64_t sched_deadline;
-	uint64_t sched_period;
-};
-
-int sched_setattr(pid_t pid, const struct sched_attr *attr,
-		  unsigned int flags) {
-	return syscall(__NR_sched_setattr, pid, attr, flags);
-}
-
-int sched_getattr(pid_t pid, struct sched_attr *attr,
-		  unsigned int size, unsigned int flags)
-{
-	return syscall (__NR_sched_getattr, pid , attr, size, flags);
-}
+#include "stalld.h"
 
 /*
  * logging.
@@ -130,8 +65,6 @@ unsigned long config_force_fifo = 0;
 long config_starving_threshold = 60;
 long config_boost_duration = 3;
 long config_aggressive = 0;
-
-#define NS_PER_SEC 1000000000
 
 /*
  * XXX: Make it a cpu mask, lazy Daniel!
@@ -425,40 +358,6 @@ static int setup_hr_tick(void)
 	return ret;
 }
 
-int read_sched_debug(char *buffer, int size)
-{
-	int position = 0;
-	int retval;
-	int fd;
-
-	fd = open("/proc/sched_debug", O_RDONLY);
-
-	if (!fd)
-		goto out_error;
-
-	do {
-		retval = read(fd, &buffer[position], size - position);
-		if (read < 0)
-			goto out_close_fd;
-
-		position += retval;
-
-	} while (retval > 0 && position < size);
-
-	if (position < size)
-		buffer[position] = '\0';
-
-	close(fd);
-
-	return position;
-
-out_close_fd:
-	close(fd);
-
-out_error:
-	return 0;
-}
-
 char *get_cpu_info_start(char *buffer, int cpu)
 {
 	/* 'cpu#9999,\0' */
@@ -516,57 +415,6 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 
 	return cpu_buffer;
 }
-
-long get_long_from_str(char *start)
-{
-	long value;
-	char *end;
-
-	errno = 0;
-	value = strtol(start, &end, 10);
-	if (errno || start == end) {
-		warn("Invalid ID '%s'", value);
-		return -1;
-	}
-
-	return value;
-}
-
-long get_long_after_colon(char *start)
-{
-	/*
-	 * Find the ":"
-	 */
-	start = strstr(start, ":");
-	if (!start)
-		return -1;
-
-	/*
-	 * skip ":"
-	 */
-	start++;
-
-	return get_long_from_str(start);
-}
-
-long get_variable_long_value(char *buffer, const char *variable)
-{
-	char *start;
-	/*
-	 * Line:
-	 * '  .nr_running                    : 0'
-	 */
-
-	/*
-	 * Find the ".nr_running"
-	 */
-	start = strstr(buffer, variable);
-	if (!start)
-		return -1;
-
-	return get_long_after_colon(start);
-}
-
 /*
  * Example:
  * ' S           task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep'
@@ -806,14 +654,6 @@ int restore_policy(int pid, struct sched_attr *attr)
 		log_msg("restore_policy: failed to restore sched policy for pid %d: %s\n",
 			pid, strerror(errno));
 	return ret;
-}
-
-void normalize_timespec(struct timespec *ts)
-{
-        while (ts->tv_nsec >= NS_PER_SEC) {
-                ts->tv_nsec -= NS_PER_SEC;
-                ts->tv_sec++;
-        }
 }
 
 /*
@@ -1201,7 +1041,7 @@ void *cpu_main(void *data)
 
 	while (cpu->thread_running) {
 
-		retval = read_sched_debug(buffer, BUFFER_SIZE);
+		retval = read_sched(buffer, BUFFER_SIZE);
 		if(!retval) {
 			warn("fail reading sched debug file");
 			warn("Dazed and confused, but trying to continue");
@@ -1288,7 +1128,7 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 	}
 
 	while (1) {
-		retval = read_sched_debug(buffer, BUFFER_SIZE);
+		retval = read_sched(buffer, BUFFER_SIZE);
 		if(!retval) {
 			warn("Dazed and confused, but trying to continue");
 			continue;
