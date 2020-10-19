@@ -50,8 +50,8 @@ int config_foreground = 0;
 /*
  * boost parameters (time in nanoseconds).
  */
-unsigned long config_dl_period  = 1000000000;
-unsigned long config_dl_runtime = 20000;
+unsigned long config_dl_period  = S_2_NS(1);
+unsigned long config_dl_runtime = US_2_NS(20); 
 
 /*
  * fifo boost parameters
@@ -362,6 +362,16 @@ out_free:
 	return retval;
 }
 
+void set_attr_deadline(struct sched_attr *attr, uint32_t period, uint32_t deadline, uint32_t runtime)
+{
+	memset(attr, 0, sizeof(*attr));
+	attr->size = sizeof(*attr);
+	attr->sched_policy = SCHED_DEADLINE;
+	attr->sched_runtime = runtime;
+	attr->sched_period =  period;
+	attr->sched_deadline = deadline;
+}
+
 int get_current_policy(int pid, struct sched_attr *attr)
 {
 	int ret;
@@ -570,9 +580,18 @@ void *cpu_main(void *data)
 	char buffer[BUFFER_SIZE];
 	int nothing_to_do = 0;
 	int retval;
+	struct sched_attr attr;
+
+	set_attr_deadline(&attr, S_2_NS(1), S_2_NS(1), MS_2_NS(50));
+
+	if (sched_setattr(0, &attr, 0) < 0)
+		die("cannot change cpu_main for cpu%d to deadline", cpu->id);
+
+	info("cpu_main[%d]: running as SCHED_DEADLINE\n", cpu->id);
 
 	while (cpu->thread_running && running) {
 
+		info("cpu_main[%d]: checking thread state\n", cpu->id);
 		retval = read_sched_debug(buffer, BUFFER_SIZE);
 		if(!retval) {
 			warn("fail reading sched debug file");
@@ -606,7 +625,8 @@ void *cpu_main(void *data)
 			pthread_exit(NULL);
 		}
 
-		sleep(1);
+		//sleep(1);
+		sched_yield();
 	}
 
 	return NULL;
@@ -624,14 +644,17 @@ static const char *join_thread(pthread_t *thread)
 void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 {
 	int i;
+	pthread_attr_t detached;
 
+	pthread_attr_setdetachstate(&detached, PTHREAD_CREATE_DETACHED);
+	
 	for (i = 0; i < nr_cpus; i++) {
 		if (!should_monitor(i))
 			continue;
 
 		cpus[i].id = i;
 		cpus[i].thread_running = 1;
-		pthread_create(&cpus[i].thread, NULL, cpu_main, &cpus[i]);
+		pthread_create(&cpus[i].thread, &detached, cpu_main, &cpus[i]);
 	}
 
 	for (i = 0; i < nr_cpus; i++) {
@@ -649,7 +672,8 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 	struct cpu_info *cpu;
 	int retval;
 	int i;
-
+	
+	info("stalld: running in conservative mode\n");
 	pthread_attr_setdetachstate(&dettached, PTHREAD_CREATE_DETACHED);
 
 	for (i = 0; i < nr_cpus; i++) {
@@ -680,18 +704,25 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 				continue;
 			}
 
+#if 0
 			if (config_verbose)
 				printf("\tchecking cpu %d - rt: %d - starving: %d\n",
 				       i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
+#endif
 
 			if (check_might_starve_tasks(cpu)) {
+				info("\t cpu %d has %d runnable, starting monitor thread\n", i);
 				cpus[i].id = i;
 				cpus[i].thread_running = 1;
-				pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]);
+				if ((retval = pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]))) {
+					errno = retval;
+					die("conservative_main: failed to create monitor thread\n");
+				}
 			}
 		}
 
-		sleep(MAX(config_starving_threshold/20,1));
+		//sleep(MAX(config_starving_threshold/20,1));
+		sched_yield();
 	}
 }
 
@@ -761,6 +792,15 @@ int main(int argc, char **argv)
 	 * see if deadline scheduler is available
 	 */
 	boost_policy = check_policies();
+
+	if (boost_policy == SCHED_DEADLINE) {
+		struct sched_attr attr;
+
+		set_attr_deadline(&attr, S_2_NS(1), S_2_NS(1), MS_2_NS(50));
+		if (sched_setattr(0, &attr, 0) < 0)
+			die("main: unable to set policy to deadline");
+		info("main: running as SCHED_DEADLINE task\n");
+	}
 
 	nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (nr_cpus < 1)

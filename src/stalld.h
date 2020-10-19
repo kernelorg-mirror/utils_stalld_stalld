@@ -12,6 +12,10 @@
 #define BUFFER_SIZE		(1024 * 1000)
 #define MAX_WAITING_PIDS	30
 
+#define S_2_NS(S)  (S * 1000000000)
+#define MS_2_NS(M) (M * 1000000)
+#define US_2_NS(U) (U * 1000)
+
 /* informnation about running tasks on a cpu */
 struct task_info {
        int pid;
@@ -90,6 +94,7 @@ static inline void normalize_timespec(struct timespec *ts)
 
 void die(const char *fmt, ...);
 void warn(const char *fmt, ...);
+void info(const char *fmt, ...);
 void log_msg(const char *fmt, ...);
 
 long get_long_from_str(char *start);

@@ -152,6 +152,9 @@ void die(const char *fmt, ...)
 	va_list ap;
 	int ret = errno;
 
+	/* tell everyone that we're not running now */
+	running = 0;
+	
 	if (errno)
 		perror("stalld: ");
 	else
@@ -185,6 +188,20 @@ void warn(const char *fmt, ...)
 }
 
 
+
+/*
+ * print an info message if we're running verbose
+ */
+void info(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (config_verbose){
+		va_start(ap, fmt);
+		vfprintf(stderr, fmt, ap);
+		va_end(ap);
+	}
+}
 
 void log_msg(const char *fmt, ...)
 {
