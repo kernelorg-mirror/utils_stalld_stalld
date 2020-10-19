@@ -35,6 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/sched.h>
+#include <sys/file.h>
 
 #include "stalld.h"
 
@@ -207,13 +208,209 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 
 	return cpu_buffer;
 }
+
+int is_runnable(int pid)
+{
+	int fd, retval, runnable = 0;
+	char stat_path[128], stat[512];
+	char *status;
+
+	if (pid == 0)
+		return 0;
+
+	retval = snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
+
+	if (retval < 0 || retval > sizeof(stat_path)) {
+		warn("stat path for task %d too long\n", pid);
+		goto out_error;
+	}
+
+
+	fd = open(stat_path, O_RDONLY);
+
+	if (!fd) {
+		warn("error opening stat path for task %d\n", pid);
+		goto out_error;
+	}
+
+	flock(fd, LOCK_SH);
+
+	retval = read(fd, &stat, sizeof(stat));
+
+	if (retval < 0) {
+		warn("error reading stat for task %d\n", pid);
+		goto out_close_fd;
+	}
+
+	if (retval < sizeof(stat))
+		stat[retval] = '\0';
+
+	status = strstr(stat, "S ");
+
+	if (status == NULL) {
+		status = strstr(stat, "R ");
+		if (status != NULL)
+			runnable = 1;
+	}
+
+	if (status == NULL)
+		warn("status unknown for task %d\n", pid);
+
+out_close_fd:
+	flock(fd, LOCK_UN);
+	close(fd);
+
+out_error:
+	return runnable;
+}
+
+int count_tasks(char *buffer)
+{
+	int count = 0;
+	char *start = buffer;
+
+	while (start != NULL) {
+		/*
+		 * Each line corresponds to a task and ends
+		 * with ' /'.
+		 */
+		start = strstr(start, " /");
+
+		if (start != NULL) {
+			count++;
+			start += 2;
+		}
+	}
+
+	return count;
+}
+
 /*
- * Example:
+ * Example (old format):
+ * '            task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep
+ * ' ----------------------------------------------------------------------------------------------------------
+ * '     watchdog/35   296       -11.731402      4081     0         0.000000        44.052473         0.000000 / 
+ */
+int parse_tasks_old(char *buffer, struct task_info *task_info, int nr_entries)
+{
+	struct task_info *task;
+	char *start = buffer;
+	int nr_tasks = count_tasks(buffer);
+	int i, waiting_tasks = 0;
+	int comm_size;
+	char *end;
+
+	start = strstr(start, "runnable tasks:");
+	start = strstr(start, "-\n");
+	start += 2;
+
+	if (nr_entries < 2) {
+		/*
+		 * A single runnable task can't be starving.
+		 */
+		return 0;
+	}
+
+	for (i = 0; i < nr_tasks; i++) {
+		int pid, ctxsw, prio;
+		char comm[15];
+
+		task = &task_info[waiting_tasks];
+
+		/*
+		 * only care about tasks that are not R (running on a CPU).
+		 */
+		if (start[0] == 'R') {
+			/*
+			 * Go to the end of the line and ignore this
+			 * task.
+			 */
+			start = strstr(start, " /");
+			start += 2;
+			continue;
+		}
+
+		/*
+		 * skip the spaces.
+		 */
+		while(start[0] == ' ')
+			start++;
+
+		end = start;
+
+		while(end[0] != ' ')
+			end++;
+
+		comm_size = end - start;
+
+		if (comm_size > 15) {
+			warn("comm_size is too large: %d\n", comm_size);
+			comm_size = 15;
+		}
+
+		strncpy(comm, start, comm_size);
+		comm[comm_size] = 0;
+
+		/*
+		 * go to the end of the task comm
+		 */
+		start=end;
+
+		pid = strtol(start, &end, 10);
+
+		/*
+		 * go to the end of the pid
+		 */
+		start=end;
+
+		/*
+		 * skip the tree-key
+		 */
+		while(start[0] == ' ')
+			start++;
+
+		while(start[0] != ' ')
+			start++;
+
+		ctxsw = strtol(start, &end, 10);
+
+		start = end;
+
+		prio = strtol(start, &end, 10);
+
+		/*
+		 * go to the end and try to find the next occurence.
+		 */
+		start = strstr(start, "/");
+		start += 2;
+
+		if (is_runnable(pid)) {
+			strncpy(task->comm, comm, comm_size);
+			task->comm[comm_size] = 0;
+			task->pid = pid;
+			task->ctxsw = ctxsw;
+			task->prio = prio;
+			task->since = time(NULL);
+
+			waiting_tasks++;
+		}
+
+		if (waiting_tasks >= nr_entries) {
+			warn("too many tasks found waiting while parsing");
+			return waiting_tasks;
+		}
+	}
+
+	return waiting_tasks;
+}
+
+/*
+ * Example (new format):
  * ' S           task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep'
  * '-----------------------------------------------------------------------------------------------------------'
  * ' I         rcu_gp     3        13.973264         2   100         0.000000         0.004469         0.000000 0 0 /
  */
-int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
+int parse_tasks(char *buffer, struct task_info *task_info, int nr_entries)
 {
 	struct task_info *task;
 	char *start = buffer;
@@ -305,6 +502,14 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 	return tasks;
 }
 
+int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
+{
+	if (format_new)
+		return parse_tasks(buffer, task_info, nr_entries);
+	else
+		return parse_tasks_old(buffer, task_info, nr_entries);
+}
+
 void print_waiting_tasks(struct cpu_info *cpu_info)
 {
 	struct task_info *task;
@@ -361,6 +566,7 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 	cpu_buffer = alloc_and_fill_cpu_buffer(cpu, buffer, buffer_size);
 	if (!cpu_buffer)
 		return -ENOMEM;
+
 
 	nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
 	nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
