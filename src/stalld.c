@@ -85,6 +85,13 @@ int boost_policy;
 int running = 1;
 
 /*
+ * discern between old (RHEL7) and new (RHEL8+/
+ * upstream) sched_debug format
+ */
+int format_parsed = 0;
+int format_new = 1;
+
+/*
  * read the contents of /proc/sched_debug into
  * the input buffer
  */
@@ -93,6 +100,9 @@ int read_sched_debug(char *buffer, int size)
 	int position = 0;
 	int retval;
 	int fd;
+	char version[128];
+	char *ver_start, *ver_end;
+	int ver_size;
 
 	fd = open("/proc/sched_debug", O_RDONLY);
 
@@ -103,6 +113,20 @@ int read_sched_debug(char *buffer, int size)
 		retval = read(fd, &buffer[position], size - position);
 		if (read < 0)
 			goto out_close_fd;
+
+		if (!format_parsed) {
+			ver_start = ver_end = strstr(buffer, "Version");
+			while (*ver_end != '#')
+				ver_end++;
+			ver_size = ver_end - ver_start - 1;
+			strncpy(version, ver_start, ver_size);
+			
+			if (strstr(version, "el7")) {
+				format_new = 0;
+				log_msg("old sched_debug format detected\n");
+			}
+			format_parsed = 1;
+		}
 
 		position += retval;
 
