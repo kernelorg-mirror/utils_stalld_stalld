@@ -254,7 +254,10 @@ int is_runnable(int pid)
 	}
 
 	if (status == NULL)
-		warn("status unknown for task %d\n", pid);
+		status = strstr(stat, "D ");
+
+	if (status == NULL)
+		warn("status unknown for task %d\n %s", pid, stat);
 
 out_close_fd:
 	flock(fd, LOCK_UN);
