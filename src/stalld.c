@@ -84,203 +84,6 @@ int boost_policy;
  */
 int running = 1;
 
-/*
- * read the contents of /proc/sched_debug into
- * the input buffer
- */
-int read_sched_debug(char *buffer, int size)
-{
-	int position = 0;
-	int retval;
-	int fd;
-
-	fd = open("/proc/sched_debug", O_RDONLY);
-
-	if (!fd)
-		goto out_error;
-
-	do {
-		retval = read(fd, &buffer[position], size - position);
-		if (read < 0)
-			goto out_close_fd;
-
-		position += retval;
-
-	} while (retval > 0 && position < size);
-
-	if (position < size)
-		buffer[position] = '\0';
-
-	close(fd);
-
-	return position;
-
-out_close_fd:
-	close(fd);
-
-out_error:
-	return 0;
-}
-
-/*
- * find the start of a cpu information block in the
- * input buffer
- */
-char *get_cpu_info_start(char *buffer, int cpu)
-{
-	/* 'cpu#9999,\0' */
-	char cpu_header[10];
-
-	sprintf(cpu_header, "cpu#%d,", cpu);
-
-	return strstr(buffer, cpu_header);
-}
-
-char *get_next_cpu_info_start(char *start)
-{
-	const char *next_cpu = "cpu#";
-
-	/* Skipp the current cpu definition */
-	start += 10;
-
-	return strstr(start, next_cpu);
-}
-
-char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
-{
-	char *next_cpu_start;
-	char *cpu_buffer;
-	char *cpu_start;
-	int size = 0;
-
-	cpu_start = get_cpu_info_start(sched_dbg, cpu);
-
-	if (!cpu_start)
-		return NULL;
-
-	next_cpu_start = get_next_cpu_info_start(cpu_start);
-
-	/*
-	 * If it did not find the next CPU, it should be the
-	 * end of the file.
-	 */
-	if (!next_cpu_start)
-		next_cpu_start = sched_dbg + sched_dbg_size;
-
-	size = next_cpu_start - cpu_start;
-
-	if (size <= 0)
-		return NULL;
-
-	cpu_buffer = malloc(size);
-
-	if (!cpu_buffer)
-		return NULL;
-
-	strncpy(cpu_buffer, cpu_start, size);
-
-	cpu_buffer[size-1] = '\0';
-
-	return cpu_buffer;
-}
-/*
- * Example:
- * ' S           task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep'
- * '-----------------------------------------------------------------------------------------------------------'
- * ' I         rcu_gp     3        13.973264         2   100         0.000000         0.004469         0.000000 0 0 /
- */
-int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
-{
-	struct task_info *task;
-	char *start = buffer;
-	int tasks = 0;
-	int comm_size;
-	char *end;
-
-	while (tasks < nr_entries) {
-		task = &task_info[tasks];
-
-		/*
-		 * only care about tasks in the Runnable state
-		 * Note: the actual scheduled task will show up as
-		 * "\n>R" so we will skip it.
-		 *
-		 */
-		start = strstr(start, "\n R");
-
-		/*
-		 * if no match then there are no more Runnable tasks
-		 */
-		if (!start)
-			break;
-
-		/*
-		 * Skip '\n R'
-		 */
-		start = &start[3];
-
-		/*
-		 * skip the spaces.
-		 */
-		while(start[0] == ' ')
-			start++;
-
-		end = start;
-
-		while(end[0] != ' ')
-			end++;
-
-		comm_size = end - start;
-
-		if (comm_size > 15) {
-			warn("comm_size is too large: %d\n", comm_size);
-			comm_size = 15;
-		}
-
-		strncpy(task->comm, start, comm_size);
-
-		task->comm[comm_size] = 0;
-
-		/*
-		 * go to the end of the task comm
-		 */
-		start=end;
-
-		task->pid = strtol(start, &end, 10);
-
-		/*
-		 * go to the end of the pid
-		 */
-		start=end;
-
-		/*
-		 * skip the tree-key
-		 */
-		while(start[0] == ' ')
-			start++;
-
-		while(start[0] != ' ')
-			start++;
-
-		task->ctxsw = strtol(start, &end, 10);
-
-		start = end;
-
-		task->prio = strtol(start, &end, 10);
-
-		task->since = time(NULL);
-
-		/*
-		 * go to the end and try to find the next occurence.
-		 */
-		start = end;
-
-		tasks++;
-	}
-
-	return tasks;
-}
-
 void print_waiting_tasks(struct cpu_info *cpu_info)
 {
 	struct task_info *task;
@@ -322,44 +125,6 @@ void merge_taks_info(struct task_info *old_tasks, int nr_old, struct task_info *
 			}
 		}
 	}
-}
-
-int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
-{
-
-	struct task_info *old_tasks = cpu_info->starving;
-	int nr_old_tasks = cpu_info->nr_waiting_tasks;
-	long nr_running, nr_rt_running;
-	int cpu = cpu_info->id;
-	char *cpu_buffer;
-	int retval = 0;
-
-	cpu_buffer = alloc_and_fill_cpu_buffer(cpu, buffer, buffer_size);
-	if (!cpu_buffer)
-		return -ENOMEM;
-
-	nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
-	nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
-
-	if ((nr_running == -1) || (nr_rt_running == -1)) {
-		retval = -EINVAL;
-		goto out_free;
-	}
-
-	cpu_info->nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
-	cpu_info->nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
-
-	cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
-	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, cpu_info->nr_running);
-	if (old_tasks) {
-		merge_taks_info(old_tasks, nr_old_tasks, cpu_info->starving, cpu_info->nr_waiting_tasks);
-		free(old_tasks);
-	}
-
-out_free:
-	free(cpu_buffer);
-
-	return retval;
 }
 
 int get_current_policy(int pid, struct sched_attr *attr)
@@ -783,13 +548,18 @@ int main(int argc, char **argv)
 
 	write_pidfile();
 
+	start_poll_thread();
+
 	if (config_aggressive)
 		aggressive_main(cpus, nr_cpus);
 	else
 		conservative_main(cpus, nr_cpus);
 
+	shutdown_poll_thread();
+	
 	if (config_log_syslog)
 		closelog();
 
 	exit(0);
+
 }

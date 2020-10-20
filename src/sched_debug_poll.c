@@ -64,6 +64,7 @@ static int alloc_sched_buffer(char **buffer, int *size)
 	while ((status = read(fd, tmp, sizeof(tmp))) > 0)
 		tsize += status;
 	close(fd);
+
 	/* double it for paranoia sake */
 	tsize *= 2;
 	printf("current /proc/sched_debug size is %d\n", tsize);
@@ -109,6 +110,40 @@ static void find_cpu_info_blocks(int size)
 	}
 }
 
+static int read_sched(char *buffer, int size)
+{
+	int position = 0;
+	int retval;
+	int fd;
+
+	fd = open("/proc/sched_debug", O_RDONLY);
+
+	if (!fd)
+		goto out_error;
+
+	do {
+		retval = read(fd, &buffer[position], size - position);
+		if (read < 0)
+			goto out_close_fd;
+
+		position += retval;
+
+	} while (retval > 0 && position < size);
+
+	if (position < size)
+		buffer[position] = '\0';
+
+	close(fd);
+
+	return position;
+
+out_close_fd:
+	close(fd);
+
+out_error:
+	return 0;
+}
+
 static void *sched_poll_thread(void *arg)
 {
 	int bufsiz;
@@ -150,40 +185,6 @@ start_poll_thread(void)
 void shutdown_poll_thread(void)
 {
 	stalld_running = 0;
-}
-
-int read_sched(char *buffer, int size)
-{
-	int position = 0;
-	int retval;
-	int fd;
-
-	fd = open("/proc/sched_debug", O_RDONLY);
-
-	if (!fd)
-		goto out_error;
-
-	do {
-		retval = read(fd, &buffer[position], size - position);
-		if (read < 0)
-			goto out_close_fd;
-
-		position += retval;
-
-	} while (retval > 0 && position < size);
-
-	if (position < size)
-		buffer[position] = '\0';
-
-	close(fd);
-
-	return position;
-
-out_close_fd:
-	close(fd);
-
-out_error:
-	return 0;
 }
 
 /*
@@ -283,22 +284,49 @@ static int fill_waiting_tasks(char *buffer, struct task_info *task_info, int nr_
 
 	return tasks;
 }
+
+void free_cpu_info(struct cpu_info *c)
+{
+	if (c == NULL)
+		return;
+	if (c->starving)
+		free (c->starving);
+	free(c);
+}
+
+/*
+ * called to get current data on a cpu
+ * returns a struct cpu_info pointer which must be freed
+ * using free_cpu_info()
+ */
 struct cpu_info *get_cpu_info(int cpu)
 {
-	struct cpu_info *c = malloc(sizeof(*c));
+	struct cpu_info *c;
 	char *ptr;
+	int status;
 	
+	if ((status = pthread_mutex_lock(&buffer_mutex))) {
+		errno = status;
+		die("get_cpu_info: failed to lock buffer_mutex\n");
+	}
+	c = malloc(sizeof(*c));
 	if (c == NULL)
-		die("get_cpu_info: callof of cpu_info struct failed");
+		die("get_cpu_info: malloc of cpu_info struct failed");
 	memset(c, 0, sizeof(*c));
 	
 	if (cpu >= ncpus)
 		die("get_cpu_info: invalid cpu number %d", cpu);
 	
+	/*
+	 * get a pointer to the cpu info block of text for the
+	 * input cpu value
+	 */
 	ptr = cpu_start_ptrs[cpu];
 	
+	/*
+	 * find out how many tasks total tasks are runnable
+	 */
 	c->nr_running = get_variable_long_value(ptr, ".nr_running");
-	c->nr_rt_running = get_variable_long_value(ptr, ".rt_nr_running");
 
 	if (c->nr_running == -1) {
 		warn("get_cpu_info: invalid value for nr_running on cpu %d: %d\n",
@@ -307,6 +335,10 @@ struct cpu_info *get_cpu_info(int cpu)
 		return NULL;
 	}
 			
+	/*
+	 * find out how many RT tasks are runnable
+	 */
+	c->nr_rt_running = get_variable_long_value(ptr, ".rt_nr_running");
 
 	if (c->nr_rt_running == -1) {
 		warn("get_cpu_info: invalid value for nr_rt_running on cpu %d: %d\n",
@@ -325,5 +357,9 @@ struct cpu_info *get_cpu_info(int cpu)
 		c->nr_waiting_tasks = fill_waiting_tasks(ptr, c->starving, c->nr_running);
 	}
 
+	if ((status = pthread_mutex_unlock(&buffer_mutex))) {
+		errno = status;
+		die("get_cpu_info: failed to unlock buffer_mutex\n");
+	}
 	return c;
 }
