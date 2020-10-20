@@ -295,7 +295,7 @@ int parse_tasks_old(char *buffer, struct task_info *task_info, int nr_entries)
 {
 	struct task_info *task;
 	char *start = buffer;
-	int nr_tasks = count_tasks(buffer);
+	int nr_tasks = nr_entries;
 	int i, waiting_tasks = 0;
 	int comm_size;
 	char *end;
@@ -567,8 +567,11 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 	if (!cpu_buffer)
 		return -ENOMEM;
 
+	if (format_new)
+		nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
+	else
+		nr_running = count_tasks(cpu_buffer);
 
-	nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
 	nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
 
 	if ((nr_running == -1) || (nr_rt_running == -1)) {
@@ -576,8 +579,8 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 		goto out_free;
 	}
 
-	cpu_info->nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
-	cpu_info->nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
+	cpu_info->nr_running = nr_running;
+	cpu_info->nr_rt_running = nr_rt_running;
 
 	cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
 	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, cpu_info->nr_running);
