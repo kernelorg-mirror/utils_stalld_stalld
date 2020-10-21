@@ -209,6 +209,20 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 	return cpu_buffer;
 }
 
+static char *skipchars(char *str)
+{
+	while (*str && !isspace(*str))
+		str++;
+	return str;
+}
+
+static char *skipspaces(char *str)
+{
+	while (*str && isspace(*str))
+		str++;
+	return str;
+}
+
 int is_runnable(int pid)
 {
 	int fd, retval, runnable = 0;
@@ -242,23 +256,35 @@ int is_runnable(int pid)
 		goto out_close_fd;
 	}
 
+	/* make sure we're null terminated */
 	if (retval < sizeof(stat))
 		stat[retval] = '\0';
+	else
+		stat[sizeof(stat) - 1] = '\0';
 
-	status = strstr(stat, "S ");
+	/*
+	 * we know that STATE is the third field of /proc/PID/stat
+	 * so skip non-spaces, then spaces, then non-spaces, then spaces
+	 * and we'll be at the state character
+	 */
+	status = skipchars(stat);
+	status = skipspaces(status);
+	status = skipchars(status);
+	status = skipspaces(status);
 
-	if (status == NULL) {
-		status = strstr(stat, "R ");
-		if (status != NULL)
-			runnable = 1;
-	}
-
-	if (status == NULL)
-		status = strstr(stat, "D ");
-
-	if (status == NULL)
+	switch(*status) {
+	case 'R':
+		runnable = 1;
+		break;
+	case 'S':
+	case 'D':
+	case 'Z':
+	case 'T':
+		break;
+	default:
 		warn("status unknown for task %d\n %s", pid, stat);
-
+	}
+	
 out_close_fd:
 	flock(fd, LOCK_UN);
 	close(fd);
