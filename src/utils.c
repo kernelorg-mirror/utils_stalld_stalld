@@ -391,6 +391,7 @@ void cleanup_regex(unsigned int *nr_task, regex_t **compiled_expr)
 			regfree(&compiled[i]);
 		}
 		free(compiled);
+		*compiled_expr = NULL;
 	}
 	*nr_task = 0;
 }
