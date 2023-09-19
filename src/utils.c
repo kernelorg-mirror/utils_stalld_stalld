@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <sched.h>
 #include <linux/sched.h>
 #include <sys/sysinfo.h>
 
@@ -749,7 +750,7 @@ static void print_usage(void)
 		"          [-c cpu-list] \\",
 		"          [-p time in ns] [-r time in ns] \\",
 		"          [-d time in seconds] [-t time in seconds] \\",
-		"          [-R percentage ]",
+		"          [-R percentage ] [-a cpu-list]",
 		"",
 		"       logging options:",
 		"          -l/--log_only: only log information (do not boost)",
@@ -772,6 +773,7 @@ static void print_usage(void)
 		"	   -O/--power_mode: works as a single threaded tool. Saves CPU, but loses precision.",
 		"	   -g/--granularity: set the granularity at which stalld checks for starving threads",
 		"	   -R/--reservation: percentage of CPU time reserved to stalld using SCHED_DEADLINE.",
+		"	   -a/--affinity: limit stalld's affinity",
 		"        ignoring options:",
 		"          -i/--ignore_threads: regexes (comma-separated) of thread names that must be ignored",
 		"                               from being boosted",
@@ -875,6 +877,60 @@ static void parse_task_ignore_string(char *task_ignore_string, unsigned int igno
 	}
 }
 
+int set_cpu_affinity(char *cpu_list)
+{
+	cpu_set_t set;
+	const char *p;
+	int end_cpu;
+	int retval;
+	int cpu;
+	int i;
+
+	CPU_ZERO(&set);
+
+	for (p = cpu_list; *p; ) {
+		cpu = atoi(p);
+		if (cpu < 0 || (!cpu && *p != '0') || cpu >= config_nr_cpus)
+			goto err;
+
+		while (isdigit(*p))
+			p++;
+		if (*p == '-') {
+			p++;
+			end_cpu = atoi(p);
+			if (end_cpu < cpu || (!end_cpu && *p != '0') || end_cpu >= config_nr_cpus)
+				goto err;
+			while (isdigit(*p))
+				p++;
+		} else
+			end_cpu = cpu;
+
+		if (cpu == end_cpu) {
+			log_msg("self-affinity: adding cpu %d\n", cpu);
+			CPU_SET(cpu, &set);
+		} else {
+			for (i = cpu; i <= end_cpu; i++) {
+				log_msg("self-affinity: adding cpu %d\n", i);
+				CPU_SET(i, &set);
+			}
+		}
+
+		if (*p == ',')
+			p++;
+	}
+
+	retval = sched_setaffinity(getpid(), sizeof(set), &set);
+	if (retval == -1) {
+		log_msg("self-affinity: error setting affinity %d", strerror(errno));
+		return -1;
+	}
+
+	return 0;
+err:
+	log_msg("self-affinity: error parsing the cpu set %s\n", cpu_list);
+	return -1;
+}
+
 static void parse_cpu_list(char *cpulist)
 {
 	const char *p;
@@ -958,13 +1014,14 @@ int parse_args(int argc, char **argv)
 			{"ignore_threads",      required_argument, 0, 'i'},
 			{"ignore_processes",    required_argument, 0, 'I'},
 			{"backend",		required_argument, 0, 'b'},
+			{"affinity",		required_argument, 0, 'a'},
 			{0, 0, 0, 0}
 		};
 
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "lvkfAOMhsp:r:d:t:c:FVSg:i:I:R:b:",
+		c = getopt_long(argc, argv, "lvkfAOMhsp:r:d:t:c:FVSg:i:I:R:b:a:",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -1100,6 +1157,9 @@ int parse_args(int argc, char **argv)
 			} else {
 				usage("unknown backend %s\n", optarg);
 			}
+			break;
+		case 'a':
+			config_affinity_cpus = optarg;
 			break;
 		case '?':
 			usage("Invalid option");

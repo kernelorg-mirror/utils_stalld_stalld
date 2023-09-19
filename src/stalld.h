@@ -10,6 +10,7 @@
 #define __STALLD_H__
 
 #include <regex.h>
+#include <sched.h>
 
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
@@ -193,6 +194,7 @@ void find_sched_debug_path(void);
 int set_reservation(int period, int reservation);
 int get_tgid(int pid);
 void merge_taks_info(int cpu, struct task_info *old_tasks, int nr_old, struct task_info *new_tasks, int nr_new);
+int set_cpu_affinity(char *cpu_list);
 
 /*
  * Shared variables.
@@ -230,6 +232,7 @@ extern int config_reservation;
 extern size_t config_buffer_size;
 extern long page_size;
 extern struct stalld_backend *backend;
+extern char *config_affinity_cpus;
 
 #define MAX_FILE_NAME	1024
 #define MAX_PATH	4096

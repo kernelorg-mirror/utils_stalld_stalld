@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Doing Releases for stalld
 
 We multiple places that consume stalld, so to keep our sanity we need

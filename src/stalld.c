@@ -159,6 +159,11 @@ int config_reservation = 0;
 struct stalld_backend *backend = &sched_debug_backend;
 
 /*
+ * Set of CPUs in which stalld should run.
+ */
+char *config_affinity_cpus;
+
+/*
  * API to fetch the process group ID for a thread/process.
  */
 int get_tgid(int pid)
@@ -1231,6 +1236,12 @@ int main(int argc, char **argv)
 		die("Can not calculate number of CPUS\n");
 
 	parse_args(argc, argv);
+
+	/*
+	 * it will not die...
+	 */
+	if (config_affinity_cpus)
+		set_cpu_affinity(config_affinity_cpus);
 
 	/*
 	 * Check RT throttling:

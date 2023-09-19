@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # stalld
 
 The stalld program (which stands for 'stall daemon') is a

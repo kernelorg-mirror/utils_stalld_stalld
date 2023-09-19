@@ -1,5 +1,6 @@
 #!/usr/bin/bash
 
+# SPDX-License-Identifier: GPL-2.0-or-later
 # This script is called to either turn off or turn on RT throttling
 # The 'off' argument causes the current values of the throttling
 # parameters from /proc/sys/kernel/sched_rt_{period,runtime}_us to

@@ -1,3 +1,4 @@
+.\" SPDX-License-Identifier: GPL-2.0-or-later
 .TH STALLD 8
 .SH NAME
 stalld \- detect starving threads and boost them
@@ -12,6 +13,7 @@ stalld \- detect starving threads and boost them
 [ -i regexes-of-thread-names ]
 [ -I regexes-of-process-names ]
 [ -R percentage ]
+[ -a cpu-list ]
 .br
 
 .SH DESCRIPTION
@@ -97,6 +99,9 @@ set the percentage of CPU time reserved for stalld via SCHED_DEADLINE.
 In this way, stalld cannot starve due to high priority threads, also
 avoid indirect starvation via priority inversion.
 .B [not set]
+.TP
+.B \-a|\-\-affinity
+set the stalld's affinity to the set of cpus in cpu-list.
 .TP
 .B \-i|\-\-ignore_threads
 regexes (comma-separated) of thread names that must be ignored from
