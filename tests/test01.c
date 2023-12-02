@@ -2,7 +2,7 @@
  * test01 - create a blocker thread and a starving thread and see if
  * 		stalld fixes the issue
  *
- * SPDX-License-Identifier: GPL-2.0
+ * SPDX-License-Identifier: GPL-2.0-or-later
  *
  * Copyright (C) 2020 Red Hat Inc, Daniel Bristot de Oliveira <bristot@redhat.com>
  */

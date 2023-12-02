@@ -1,10 +1,10 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0-or-later
 Name:		stalld
 Version:	1.16
 Release:	1%{?dist}
 Summary:	Daemon that finds starving tasks and gives them a temporary boost
 
-License:	GPLv2
+License:	GPL-2.0-or-later
 URL:		https://gitlab.com/rt-linux-tools/%{name}/%{name}.git
 Source0:	https://gitlab.com/rt-linux-tools/%{name}/-/archive/v%{version}/%{name}-%{version}.tar.bz2
 

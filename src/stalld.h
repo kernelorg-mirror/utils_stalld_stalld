@@ -1,7 +1,7 @@
 /*
  * Data structures, constants and function prototypes
  * used by stalld
- * SPDX-License-Identifier: GPL-2.0
+ * SPDX-License-Identifier: GPL-2.0-or-later
  *
  * Copyright (C) 2020 Red Hat Inc, Daniel Bristot de Oliveira <bristot@redhat.com>
  */

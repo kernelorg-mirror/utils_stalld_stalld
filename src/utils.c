@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: GPL-2.0
+ * SPDX-License-Identifier: GPL-2.0-or-later
  *
  * Copyright (C) 2020-2021 Red Hat Inc, Daniel Bristot de Oliveira <bristot@redhat.com>
  * Copyright (C) 2020 Red Hat Inc, Clark Williams <williams@redhat.com>
