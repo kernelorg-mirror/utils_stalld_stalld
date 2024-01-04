@@ -83,18 +83,3 @@ your .git/config file in the stalld git repository:
 The remote value should be whatever remote name you use for the
 kernel.org stalld repository and the keyid should be your gpg signing
 keyid.
-
-## Fedora Release
-
-The Fedora release process is mostly encapsulated in the `redhat`
-directory. Invoking the top level Makefile with the target 'redhat'
-will run through the RPM build process and end up with an SRPM and a
-binary rpm of stalld in the local directory. The main process here is
-to update the stalld.spec with version information and a changelog
-entry for the release changes since last release. Once that's
-committed, cd over to a separate fedpkg directory and use the Fedora
-**fedpkg** script to upload the new tarball and specfile and generate
-builds for the live Fedora branches, starting with the **rawhide** or
-**master** branch and then working down from the current release
-branch to the last supported. At the time of this writing that means
-rawhide, f33, f32 and f31 branches.

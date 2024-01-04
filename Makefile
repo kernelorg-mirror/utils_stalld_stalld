@@ -19,7 +19,7 @@ LIBS	:=	 -lpthread -lbpf
 SRC	:=	$(wildcard src/*.c)
 HDR	:=	$(wildcard src/*.h)
 OBJ	:=	$(SRC:.c=.o)
-DIRS	:=	src redhat man tests scripts bpf
+DIRS	:=	src man tests scripts bpf
 FILES	:=	Makefile README.md gpl-2.0.txt scripts/throttlectl.sh
 CEXT	:=	bz2
 TARBALL	:=	$(NAME)-$(VERSION).tar.$(CEXT)
@@ -94,13 +94,12 @@ install:
 	$(INSTALL) gpl-2.0.txt -m 644 $(DESTDIR)$(LICDIR)/$(NAME)
 
 
-.PHONY: clean tarball redhat push
+.PHONY: clean tarball push
 clean:
 	@test ! -f stalld || rm stalld
 	@test ! -f stalld-static || rm stalld-static
 	@test ! -f src/stalld.o || rm src/stalld.o
 	@test ! -f $(TARBALL) || rm -f $(TARBALL)
-	@make -C redhat VERSION=$(VERSION) clean
 	@make -C tests clean
 	@test ! -f bpf/vmlinux.h || rm bpf/vmlinux.h
 	@test ! -f bpf/stalld.bpf.o || rm bpf/stalld.bpf.o
@@ -112,6 +111,3 @@ tarball:  clean
 	cp -r $(DIRS) $(FILES) $(NAME)-$(VERSION)
 	tar $(TAROPTS) --exclude='*~' $(NAME)-$(VERSION)
 	rm -rf $(NAME)-$(VERSION)
-
-redhat: tarball
-	$(MAKE) -C redhat VERSION=$(VERSION) CEXT=$(CEXT)
