@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 NAME	:=	stalld
-VERSION	:=	1.18
+VERSION	:=	1.19
 
 INSTALL	=	install
 CC	:=	gcc
@@ -19,7 +19,7 @@ LIBS	:=	 -lpthread -lbpf
 SRC	:=	$(wildcard src/*.c)
 HDR	:=	$(wildcard src/*.h)
 OBJ	:=	$(SRC:.c=.o)
-DIRS	:=	src redhat man tests scripts bpf
+DIRS	:=	src systemd man tests scripts bpf
 FILES	:=	Makefile README.md gpl-2.0.txt scripts/throttlectl.sh
 CEXT	:=	bz2
 TARBALL	:=	$(NAME)-$(VERSION).tar.$(CEXT)
@@ -29,6 +29,7 @@ DATADIR	:=	/usr/share
 DOCDIR	:=	$(DATADIR)/doc
 MANDIR	:=	$(DATADIR)/man
 LICDIR	:=	$(DATADIR)/licenses
+INSPATH :=	$(realpath $(DESTDIR))
 
 DEFAULT_BPFTOOL		?= bpftool
 BPFTOOL			?= $(DEFAULT_BPFTOOL)
@@ -92,15 +93,16 @@ install:
 	$(INSTALL) man/stalld.8 -m 644 $(DESTDIR)$(MANDIR)/man8
 	$(INSTALL) -m 755 -d $(DESTDIR)$(LICDIR)/$(NAME)
 	$(INSTALL) gpl-2.0.txt -m 644 $(DESTDIR)$(LICDIR)/$(NAME)
+	$(INSTALL) scripts/throttlectl.sh $(DESTDIR)$(BINDIR)
+	make -C systemd DESTDIR=$(INSPATH) install
 
-
-.PHONY: clean tarball redhat push
+.PHONY: clean tarball systemd push
 clean:
 	@test ! -f stalld || rm stalld
 	@test ! -f stalld-static || rm stalld-static
 	@test ! -f src/stalld.o || rm src/stalld.o
 	@test ! -f $(TARBALL) || rm -f $(TARBALL)
-	@make -C redhat VERSION=$(VERSION) clean
+	@make -C systemd VERSION=$(VERSION) clean
 	@make -C tests clean
 	@test ! -f bpf/vmlinux.h || rm bpf/vmlinux.h
 	@test ! -f bpf/stalld.bpf.o || rm bpf/stalld.bpf.o
@@ -112,6 +114,3 @@ tarball:  clean
 	cp -r $(DIRS) $(FILES) $(NAME)-$(VERSION)
 	tar $(TAROPTS) --exclude='*~' $(NAME)-$(VERSION)
 	rm -rf $(NAME)-$(VERSION)
-
-redhat: tarball
-	$(MAKE) -C redhat VERSION=$(VERSION) CEXT=$(CEXT)
