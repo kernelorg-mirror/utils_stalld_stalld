@@ -26,7 +26,7 @@ TARBALL	:=	$(NAME)-$(VERSION).tar.$(CEXT)
 TAROPTS	:=	-cvjf $(TARBALL)
 BINDIR	:=	/usr/bin
 DATADIR	:=	/usr/share
-DOCDIR	:=	$(DATADIR)/doc
+DOCDIR	:=	$(DATADIR)/doc/stalld
 MANDIR	:=	$(DATADIR)/man
 LICDIR	:=	$(DATADIR)/licenses
 INSPATH :=	$(realpath $(DESTDIR))
@@ -42,6 +42,18 @@ KERNEL_REL		:= $(shell uname -r)
 VMLINUX_BTF_PATHS	:= /sys/kernel/btf/vmlinux /boot/vmlinux-$(KERNEL_REL)
 VMLINUX_BTF_PATH	:= $(or $(VMLINUX_BTF),$(firstword                            \
                                           $(wildcard $(VMLINUX_BTF_PATHS))))
+
+ifeq ($(strip $(ARCH)),)
+ARCH=$(shell uname -m)
+endif
+$(info ARCH=$(ARCH))
+
+ifeq ($(ARCH),x86_64)
+CLANGARCH="-D__x86_64__"
+endif
+ifeq ($(ARCH),aarch64)
+CLANGARCH="-D__aarch64__"
+endif
 
 .PHONY:	all tests
 
@@ -61,7 +73,7 @@ bpf/vmlinux.h:
 # The .bpf.c needs to be transformed into the .bpf.o.
 # The .bpf.o is then required to build the .skel.h.
 bpf/stalld.bpf.o: bpf/vmlinux.h bpf/stalld.bpf.c
-	$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
+	$(CLANG) -g -O2 -target bpf $(CLANGARCH) -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
 	$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 
@@ -93,7 +105,7 @@ install:
 	$(INSTALL) man/stalld.8 -m 644 $(DESTDIR)$(MANDIR)/man8
 	$(INSTALL) -m 755 -d $(DESTDIR)$(LICDIR)/$(NAME)
 	$(INSTALL) gpl-2.0.txt -m 644 $(DESTDIR)$(LICDIR)/$(NAME)
-	$(INSTALL) scripts/throttlectl.sh $(DESTDIR)$(BINDIR)
+	$(INSTALL) scripts/throttlectl.sh $(DESTDIR)$(BINDIR)/throttlectl
 	make -C systemd DESTDIR=$(INSPATH) install
 
 .PHONY: clean tarball systemd push

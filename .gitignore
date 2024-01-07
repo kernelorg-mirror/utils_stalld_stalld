@@ -1,5 +1,6 @@
 tests/test01
 *.tar.xz
+*.tar.bz2
 *~
 *.o
 stalld

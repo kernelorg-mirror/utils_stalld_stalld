@@ -3,8 +3,6 @@
 
 INSTALL	:=	install
 UNITDIR	:=	/usr/lib/systemd/system
-DATADIR :=	/usr/share
-BINDIR	:=	/usr/bin
 
 install:
 	$(INSTALL) -m 755 -d $(DESTDIR)/etc/sysconfig
