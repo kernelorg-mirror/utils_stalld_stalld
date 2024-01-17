@@ -31,7 +31,9 @@
 
 #include "stalld.h"
 #include "sched_debug.h"
+#if USE_BPF
 #include "queue_track.h"
+#endif
 
 /*
  * fill_process_comm - process name from task group ID.
@@ -782,7 +784,9 @@ static void print_usage(void)
 		"	backend:",
 		"	   -b/--backend: backend to be used to search for starving tasks, options are:",
 		"		sched_debug || S: for sched/debug file,",
+#if USE_BPF
 		"		queue_track || Q: for tracking enqueue/dequeue of tasks in the runqueues.",
+#endif
 		"	misc:",
 		"          --pidfile: write daemon pid to specified file",
 		"          -S/--systemd: running as systemd service, don't fiddle with RT throttling",
@@ -1151,9 +1155,12 @@ int parse_args(int argc, char **argv)
 			if (!strcmp(optarg, "sched_debug") || !strcmp(optarg, "S")) {
 				backend = &sched_debug_backend;
 				log_msg("using sched_debug backend\n");
+#if USE_BPF
 			} else if (!strcmp(optarg, "queue_track") || !strcmp(optarg, "Q")) {
 				backend = &queue_track_backend;
 				log_msg("using queue_track backend\n");
+#endif
+
 			} else {
 				usage("unknown backend %s\n", optarg);
 			}
