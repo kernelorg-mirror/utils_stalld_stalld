@@ -110,12 +110,15 @@ struct stalld_backend {
 	void (*destroy)(void);
 };
 
+#define USE_BPF 1
+
 #ifdef __x86_64__
 # define __NR_sched_setattr 314
 # define __NR_sched_getattr 315
 #elif __i386__
 # define __NR_sched_setattr 351
 # define __NR_sched_getattr 352
+# define USE_BPF 0
 #elif __arm__
 # define __NR_sched_setattr 380
 # define __NR_sched_getattr 381
@@ -128,6 +131,7 @@ struct stalld_backend {
 #elif __s390x__
 # define __NR_sched_setattr 345
 # define __NR_sched_getattr 346
+# define USE_BPF 0
 #endif
 
 struct sched_attr {

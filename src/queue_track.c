@@ -1,3 +1,4 @@
+#if USE_BPF
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
@@ -324,3 +325,4 @@ struct stalld_backend queue_track_backend = {
 	.has_starving_task	= queue_track_has_starving_task,
 	.destroy		= queue_track_destroy,
 };
+#endif /* USE_BPF */

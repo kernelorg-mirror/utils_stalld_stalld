@@ -38,7 +38,9 @@
 
 #include "stalld.h"
 #include "sched_debug.h"
+#if USE_BPF
 #include "queue_track.h"
+#endif
 
 /*
  * version
