@@ -5,7 +5,6 @@
  */
 
 #include "vmlinux.h"
-#include <string.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include "../src/queue_track.h"

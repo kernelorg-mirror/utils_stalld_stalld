@@ -25,12 +25,10 @@ ifeq ($(ARCH),aarch64)
 FCF_PROTECTION := $(CF_PROTECTION_OPTS)
 endif
 ifeq ($(ARCH),ppc64le)
-USE_BPF := 0
 FCF_PROTECTION := $(CF_PROTECTION_OPTS)
 TMOPTS := -mtune=powerpc64le
 endif
 ifeq ($(ARCH),powerpc)
-USE_BPF := 0
 FCF_PROTECTION := $(CF_PROTECTION_OPTS)
 TMOPTS := -mtune=powerpc
 endif
@@ -90,22 +88,6 @@ VMLINUX_BTF_PATHS	:= /sys/kernel/btf/vmlinux /boot/vmlinux-$(KERNEL_REL)
 VMLINUX_BTF_PATH	:= $(or $(VMLINUX_BTF),$(firstword                            \
                                           $(wildcard $(VMLINUX_BTF_PATHS))))
 
-ifeq ($(ARCH),x86_64)
-CLANGARCH="-D__x86_64__"
-endif
-ifeq ($(ARCH),aarch64)
-CLANGARCH="-D__aarch64__"
-endif
-ifeq ($(ARCH),powerpc)
-CLANGARCH="-D__powerpc__"
-endif
-ifeq ($(ARCH),ppc64le)
-CLANGARCH="-D__ppc64le__"
-endif
-ifeq ($(ARCH),s390x)
-CLANGARCH=-D__s390x__
-endif
-
 .PHONY:	all tests
 
 all:	stalld tests
@@ -125,7 +107,7 @@ bpf/vmlinux.h:
 # The .bpf.c needs to be transformed into the .bpf.o.
 # The .bpf.o is then required to build the .skel.h.
 bpf/stalld.bpf.o: bpf/vmlinux.h bpf/stalld.bpf.c
-	@$(CLANG) -g -O2 -target bpf $(CLANGARCH) -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
+	@$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # This is the second step: The .bpf.o object is translated into
