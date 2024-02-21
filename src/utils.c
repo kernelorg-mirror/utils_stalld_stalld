@@ -55,7 +55,7 @@ int fill_process_comm(int tgid, int pid, char *comm, int comm_size)
 	if (retval < 0)
 		goto out_error;
 
-	fd = open(path, O_RDWR);
+	fd = open(path, O_RDONLY);
 	if (fd < 0) {
 		log_msg("failed to open comm file at %s\n", path);
 		goto out_error;
