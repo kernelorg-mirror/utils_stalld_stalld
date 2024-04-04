@@ -27,7 +27,7 @@ case ${cmd} in
 	# verify that we really turned it off
 	if [[ "$(cat $path/sched_rt_runtime_us)" != "-1" ]]; then
 	    logger -t stalld "failed to turn off RT throttling"
-	    exit -1
+	    exit 1
 	fi
 	logger -t stalld "Disabled RT throttling"
 	;;
