@@ -964,6 +964,8 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 skipped:
 		sleep(config_granularity);
 	}
+	if (buffer)
+		free (buffer);
 }
 
 int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus, struct cpu_info *cpus)
