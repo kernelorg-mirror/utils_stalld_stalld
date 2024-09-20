@@ -218,9 +218,10 @@ out_free_mem:
 }
 
 /*
- * Read the content of sched_debug into the input buffer.
+ * Read the content of /proc/stat into the input buffer.
+ * Used by functions doing cpu idle detection
  */
-int read_sched_stat(char *buffer, int size)
+int read_proc_stat(char *buffer, int size)
 {
 	int position = 0;
 	int retval;
@@ -251,6 +252,34 @@ out_close_fd:
 
 out_error:
 	return 0;
+}
+
+/*
+ * calculate a buffer size to use when reading /proc/stat
+ */
+
+static int calc_stat_max(int pgsize)
+{
+	char buffer[pgsize];
+	int nread, size = 0, bufsize=pgsize;
+	int fd = open("/proc/stat", O_RDONLY);
+
+	if (fd < 0) {
+		perror("open(/proc/stat)");
+		return -1;
+	}
+	while ((nread = read(fd,buffer,pgsize)) > 0)
+		size += nread;
+	close(fd);
+
+	/* round size up to next page boundary and add a page */
+	while (bufsize < size)
+		bufsize += pgsize;
+	bufsize += pgsize;
+
+	info("stat max buffer size: %d\n", bufsize);
+
+	return bufsize;
 }
 
 /*
@@ -317,17 +346,17 @@ static long get_cpu_idle_time(char *buffer, size_t buffer_size, int cpu)
 
 int cpu_had_idle_time(struct cpu_info *cpu_info)
 {
-	char sched_stat[STAT_MAX_SIZE];
+	char proc_stat[STAT_MAX_SIZE];
 	long idle_time;
 
-	if (!read_sched_stat(sched_stat, STAT_MAX_SIZE)) {
+	if (!read_proc_stat(proc_stat, STAT_MAX_SIZE)) {
 		warn("fail reading sched stat file");
 		warn("disabling idle detection");
 		config_idle_detection = 0;
 		return 0;
 	}
 
-	idle_time = get_cpu_idle_time(sched_stat, STAT_MAX_SIZE, cpu_info->id);
+	idle_time = get_cpu_idle_time(proc_stat, STAT_MAX_SIZE, cpu_info->id);
 	if (idle_time < 0) {
 		if (idle_time != -ENODEV)
 			warn("unable to parse idle time for cpu%d\n", cpu_info->id);
@@ -354,13 +383,13 @@ int cpu_had_idle_time(struct cpu_info *cpu_info)
 
 int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 {
-	char sched_stat[STAT_MAX_SIZE];
+	char proc_stat[STAT_MAX_SIZE];
 	struct cpu_info *cpu;
 	int busy_count = 0;
 	long idle_time;
 	int i;
 
-	if (!read_sched_stat(sched_stat, STAT_MAX_SIZE)) {
+	if (!read_proc_stat(proc_stat, STAT_MAX_SIZE)) {
 		warn("fail reading sched stat file");
 		warn("disabling idle detection");
 		config_idle_detection = 0;
@@ -378,7 +407,7 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 			continue;
 		}
 
-		idle_time = get_cpu_idle_time(sched_stat, STAT_MAX_SIZE, cpu->id);
+		idle_time = get_cpu_idle_time(proc_stat, STAT_MAX_SIZE, cpu->id);
 		if (idle_time < 0) {
 			if (idle_time != -ENODEV)
 				warn("unable to parse idle time for cpu%d\n", cpu->id);
@@ -1291,7 +1320,7 @@ int main(int argc, char **argv)
 	setup_signal_handling();
 
 	if (config_idle_detection)
-		STAT_MAX_SIZE = config_nr_cpus * page_size;
+		STAT_MAX_SIZE = calc_stat_max(page_size);
 
 	if (!config_foreground)
 		daemonize();
