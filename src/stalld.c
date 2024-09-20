@@ -221,7 +221,7 @@ out_free_mem:
  * Read the content of /proc/stat into the input buffer.
  * Used by functions doing cpu idle detection
  */
-int read_proc_stat(char *buffer, int size)
+static int read_proc_stat(char *buffer, int size)
 {
 	int position = 0;
 	int retval;
@@ -344,7 +344,7 @@ static long get_cpu_idle_time(char *buffer, size_t buffer_size, int cpu)
 	return val;
 }
 
-int cpu_had_idle_time(struct cpu_info *cpu_info)
+static int cpu_had_idle_time(struct cpu_info *cpu_info)
 {
 	char proc_stat[STAT_MAX_SIZE];
 	long idle_time;
@@ -381,7 +381,7 @@ int cpu_had_idle_time(struct cpu_info *cpu_info)
 	return 1;
 }
 
-int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
+static int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 {
 	char proc_stat[STAT_MAX_SIZE];
 	struct cpu_info *cpu;
@@ -430,7 +430,7 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 	return busy_count;
 }
 
-void print_waiting_tasks(struct cpu_info *cpu_info)
+static void print_waiting_tasks(struct cpu_info *cpu_info)
 {
 	time_t now = time(NULL);
 	struct task_info *task;
@@ -458,9 +458,9 @@ struct cpu_starving_task_info {
 	int overloaded;
 };
 
-struct cpu_starving_task_info *cpu_starving_vector;
+static struct cpu_starving_task_info *cpu_starving_vector;
 
-void update_cpu_starving_vector(int cpu, int tgid, int pid, time_t since, struct task_info *task)
+static void update_cpu_starving_vector(int cpu, int tgid, int pid, time_t since, struct task_info *task)
 {
 	struct cpu_starving_task_info *cpu_info = &cpu_starving_vector[cpu];
 
@@ -508,7 +508,7 @@ void merge_taks_info(int cpu, struct task_info *old_tasks, int nr_old, struct ta
 	}
 }
 
-int get_current_policy(int pid, struct sched_attr *attr)
+static int get_current_policy(int pid, struct sched_attr *attr)
 {
 	int ret;
 
@@ -518,7 +518,7 @@ int get_current_policy(int pid, struct sched_attr *attr)
 	return ret;
 }
 
-void print_boosted_info(int tgid, int pid, struct cpu_info *cpu, char *type)
+static void print_boosted_info(int tgid, int pid, struct cpu_info *cpu, char *type)
 {
 	char comm[COMM_SIZE];
 
@@ -530,7 +530,7 @@ void print_boosted_info(int tgid, int pid, struct cpu_info *cpu, char *type)
 		log_msg("boosted pid %d (%s) using %s\n", pid, comm, type);
 }
 
-int boost_with_deadline(int tgid, int pid, struct cpu_info *cpu)
+static int boost_with_deadline(int tgid, int pid, struct cpu_info *cpu)
 {
 	struct sched_attr attr;
 	int flags = 0;
@@ -553,7 +553,7 @@ int boost_with_deadline(int tgid, int pid, struct cpu_info *cpu)
 	return ret;
 }
 
-int boost_with_fifo(int tgid, int pid, struct cpu_info *cpu)
+static int boost_with_fifo(int tgid, int pid, struct cpu_info *cpu)
 {
 	struct sched_attr attr;
 	int flags = 0;
@@ -574,7 +574,7 @@ int boost_with_fifo(int tgid, int pid, struct cpu_info *cpu)
 	return ret;
 }
 
-int restore_policy(int pid, struct sched_attr *attr)
+static int restore_policy(int pid, struct sched_attr *attr)
 {
 	int flags = 0;
 	int ret;
@@ -592,7 +592,7 @@ int restore_policy(int pid, struct sched_attr *attr)
  * back to its old policy, then sleeping for the remainder of the period,
  * repeating until all the periods are done.
  */
-void do_fifo_boost(int tgid, int pid, struct sched_attr *old_attr, struct cpu_info *cpu)
+static void do_fifo_boost(int tgid, int pid, struct sched_attr *old_attr, struct cpu_info *cpu)
 {
 	uint64_t nr_periods = (config_boost_duration * NS_PER_SEC) / config_dl_period;
 	struct timespec remainder_ts;
@@ -620,7 +620,7 @@ void do_fifo_boost(int tgid, int pid, struct sched_attr *old_attr, struct cpu_in
 	}
 }
 
-int boost_starving_task(int tgid, int pid, struct cpu_info *cpu)
+static int boost_starving_task(int tgid, int pid, struct cpu_info *cpu)
 {
 	struct sched_attr attr;
 	int ret;
@@ -662,7 +662,7 @@ int boost_starving_task(int tgid, int pid, struct cpu_info *cpu)
  * The task's name itself will be checked or the name of the task
  * group it is a part of will be checked.
  */
-int check_task_ignore(struct task_info *task) {
+static int check_task_ignore(struct task_info *task) {
 	char group_comm[COMM_SIZE];
 	int ret = -EINVAL;
 	unsigned int i;
@@ -708,7 +708,7 @@ out:
 	return ret;
 }
 
-int check_starving_tasks(struct cpu_info *cpu)
+static int check_starving_tasks(struct cpu_info *cpu)
 {
 	struct task_info *tasks = cpu->starving;
 	struct task_info *task;
@@ -752,7 +752,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 	return starving;
 }
 
-int check_might_starve_tasks(struct cpu_info *cpu)
+static int check_might_starve_tasks(struct cpu_info *cpu)
 {
 	struct task_info *tasks = cpu->starving;
 	struct task_info *task;
@@ -885,7 +885,7 @@ static const char *join_thread(pthread_t *thread)
 	return result;
 }
 
-void aggressive_main(struct cpu_info *cpus, int nr_cpus)
+static void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 {
 	int i;
 
@@ -906,7 +906,7 @@ void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 	}
 }
 
-void conservative_main(struct cpu_info *cpus, int nr_cpus)
+static void conservative_main(struct cpu_info *cpus, int nr_cpus)
 {
 	char busy_cpu_list[nr_cpus];
 	pthread_attr_t dettached;
@@ -997,7 +997,7 @@ skipped:
 		free(buffer);
 }
 
-int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus, struct cpu_info *cpus)
+static int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus, struct cpu_info *cpus)
 {
 	struct cpu_starving_task_info *cpu;
 	struct sched_attr attr[nr_cpus];
@@ -1065,7 +1065,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 	return boosted;
 }
 
-void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
+static void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 {
 	char busy_cpu_list[nr_cpus];
 	size_t buffer_size = 0;
@@ -1203,7 +1203,7 @@ skipped:
 		free(buffer);
 }
 
-int check_policies(void)
+static int check_policies(void)
 {
 	int saved_runtime = config_dl_runtime;
 	int boosted = SCHED_DEADLINE;
