@@ -171,13 +171,13 @@ tests:
 .PHONY: install
 install: stalld
 	$(INSTALL) -m 755 -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(DOCDIR)
-	$(INSTALL) stalld -m 755 $(DESTDIR)$(BINDIR)
+	$(INSTALL) stalld -m 700 $(DESTDIR)$(BINDIR)
 	$(INSTALL) README.md -m 644 $(DESTDIR)$(DOCDIR)
 	$(INSTALL) -m 755 -d $(DESTDIR)$(MANDIR)/man8
 	$(INSTALL) man/stalld.8 -m 644 $(DESTDIR)$(MANDIR)/man8
 	$(INSTALL) -m 755 -d $(DESTDIR)$(LICDIR)/$(NAME)
 	$(INSTALL) gpl-2.0.txt -m 644 $(DESTDIR)$(LICDIR)/$(NAME)
-	$(INSTALL) scripts/throttlectl.sh $(DESTDIR)$(BINDIR)/throttlectl
+	$(INSTALL) -m 700 scripts/throttlectl.sh $(DESTDIR)$(BINDIR)/throttlectl
 	make -C systemd DESTDIR=$(INSPATH) install
 
 .PHONY: uninstall
