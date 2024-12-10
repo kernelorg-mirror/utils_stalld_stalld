@@ -12,6 +12,6 @@ install:
 
 uninstall:
 	rm -f $(DESTDIR)/etc/sysconfig/stalld
-	rm -f 644 $(DESTDIR)$(UNITDIR)/stalld.service
+	rm -f $(DESTDIR)$(UNITDIR)/stalld.service
 clean:
 	@rm -rf *~
