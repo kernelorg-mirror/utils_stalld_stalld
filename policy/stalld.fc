@@ -1,0 +1,3 @@
+/usr/bin/stalld		--	gen_context(system_u:object_r:stalld_exec_t,s0)
+
+/var/run/stalld(/.*)?		gen_context(system_u:object_r:stalld_var_run_t,s0)
