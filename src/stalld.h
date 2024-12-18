@@ -110,6 +110,8 @@ struct stalld_backend {
 	void (*destroy)(void);
 };
 
+#if ! __GLIBC_PREREQ(2, 41) && !defined(GLIBC_HAS_SCHED_ATTR)
+
 #ifdef __x86_64__
 # define __NR_sched_setattr 314
 # define __NR_sched_getattr 315
@@ -151,6 +153,8 @@ static inline int sched_getattr(pid_t pid, struct sched_attr *attr,
 {
        return syscall (__NR_sched_getattr, pid , attr, size, flags);
 }
+
+#endif /* !__GLIBC_PREREQ(2, 41) */
 
 #define NS_PER_SEC 1000000000uL
 
