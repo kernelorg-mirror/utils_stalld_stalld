@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 NAME	:=	stalld
-VERSION	:=	1.19.6
+VERSION	:=	1.19.8
 
 ifeq ($(strip $(ARCH)),)
 ARCH=$(shell uname -m)
