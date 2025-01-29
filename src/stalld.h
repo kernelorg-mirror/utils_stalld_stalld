@@ -193,7 +193,7 @@ void write_pidfile(void);
 int parse_args(int argc, char **argv);
 int rt_throttling_is_off(void);
 int turn_off_rt_throttling(void);
-void cleanup_regex();
+void cleanup_regex(unsigned int *nr_task, regex_t **compiled_expr);
 void find_sched_debug_path(void);
 int set_reservation(int period, int reservation);
 int get_tgid(int pid);
