@@ -158,7 +158,11 @@ int config_reservation = 0;
 /*
  * Select a backend.
  */
+#if USE_BPF
+struct stalld_backend *backend = &queue_track_backend;
+#else
 struct stalld_backend *backend = &sched_debug_backend;
+#endif /* USE_BPF */
 
 /*
  * Set of CPUs in which stalld should run.
