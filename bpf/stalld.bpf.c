@@ -35,6 +35,34 @@ struct {
 #endif
 
 /**
+ * compute_ctxswc - Compute the total context switch count for a task.
+ * @p: A pointer to the `task_struct` (process descriptor) of the task.
+ *
+ * This function calculates the total number of context switches a task
+ * has undergone by summing its voluntary and involuntary context switch
+ * counts.
+ *
+ * The `nvcsw` (number of voluntary context switches) increments when a task
+ * explicitly yields the CPU (e.g., waiting for I/O, sleeping, or blocking
+ * on a lock).
+ *
+ * The `nivcsw` (number of involuntary context switches) increments when a task
+ * is preempted by the scheduler (e.g., its timeslice expires, or a higher
+ * priority task becomes runnable).
+ *
+ * The sum of these two counters provides a comprehensive measure of how many
+ * times the task has been context-switched in and out of the CPU. This value
+ * is crucial for tools like `stalld` to detect if a task has made progress
+ * (i.e., has run at least once) since a previous observation.
+ *
+ * Return: The total context switch count (nvcsw + nivcsw) for the given task.
+ */
+static inline long compute_ctxswc(struct task_struct *p)
+{
+	return p->nvcsw + p->nivcsw;
+}
+
+/**
  * Each CPU has its own set of statistics stored on a per-cpu
  * array, this function returns the variable of the current
  * CPU.
@@ -53,7 +81,7 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 {
 	struct stalld_cpu_data *cpu_data = get_cpu_data(rq->cpu);
 	struct queued_task *task;
-	long ctxswc = p->nvcsw + p->nivcsw;
+	long ctxswc = compute_ctxswc(p);
 	long tgid = p->tgid;
 	long prio = p->prio;
 	long pid = p->pid;
@@ -166,6 +194,7 @@ SEC("tp_btf/sched_switch")
 int handle__sched_switch(u64 *ctx)
 {
 	struct stalld_cpu_data *cpu_data = get_cpu_data(bpf_get_smp_processor_id());
+	struct queued_task *task;
 	struct task_struct *prev = (void *) ctx[1];
 	struct task_struct *next = (void *) ctx[2];
 	long pid = next->pid;
@@ -180,6 +209,15 @@ int handle__sched_switch(u64 *ctx)
 
 	if (next->prio <= 99 && next->prio >= 0)
 		cpu_data->nr_rt_running = 1;
+
+	// update the context switch count of the tasks
+	task = find_queued_task(cpu_data, next->pid);
+	if (task)
+		task->ctxswc = compute_ctxswc(next);
+
+	task = find_queued_task(cpu_data, prev->pid);
+	if (task)
+		task->ctxswc = compute_ctxswc(prev);
 
 	return 0;
 }
