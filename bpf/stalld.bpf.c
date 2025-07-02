@@ -52,11 +52,12 @@ static struct stalld_cpu_data *get_cpu_data(int cpu)
 static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 {
 	struct stalld_cpu_data *cpu_data = get_cpu_data(rq->cpu);
+	struct queued_task *task;
 	long ctxswc = p->nvcsw + p->nivcsw;
 	long tgid = p->tgid;
 	long prio = p->prio;
 	long pid = p->pid;
-	int i;
+	int slot = 0;
 
 	if (!cpu_data)
 		return 0;
@@ -64,21 +65,22 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 	if (!cpu_data->monitoring)
 		return 0;
 
-	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-		log("slot %d: %d %d", i, cpu_data->tasks[i].pid, cpu_data->tasks[i].ctxswc);
+	for_each_task_entry(cpu_data, task) {
+		log("slot %d: %d %d", slot, task->pid, task->ctxswc);
+		++slot;
 
-		if (cpu_data->tasks[i].pid == 0 || cpu_data->tasks[i].pid == pid) {
-			cpu_data->tasks[i].ctxswc = ctxswc;
-			cpu_data->tasks[i].prio = prio;
-			cpu_data->tasks[i].is_rt = rt;
-			cpu_data->tasks[i].tgid = tgid;
+		if (task->pid == 0 || task->pid == pid) {
+			task->ctxswc = ctxswc;
+			task->prio = prio;
+			task->is_rt = rt;
+			task->tgid = tgid;
 
 			/*
 			 * User reads pid to know that there is no data here.
 			 * Update it last.
 			 */
 			barrier();
-			cpu_data->tasks[i].pid = pid;
+			task->pid = pid;
 			log("queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
 			return 0;
 		}
@@ -93,8 +95,8 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 static int dequeue_task(struct task_struct *p, struct rq *rq, int rt)
 {
 	struct stalld_cpu_data *cpu_data = get_cpu_data(rq->cpu);
+	struct queued_task *task;
 	long pid = p->pid;
-	int i;
 
 	if (!cpu_data)
 		return 0;
@@ -102,18 +104,17 @@ static int dequeue_task(struct task_struct *p, struct rq *rq, int rt)
 	if (!cpu_data->monitoring)
 		return 0;
 
-	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-		if (cpu_data->tasks[i].pid == pid) {
-
-			cpu_data->tasks[i].pid = 0;
+	for_each_task_entry(cpu_data, task) {
+		if (task->pid == pid) {
+			task->pid = 0;
 			/*
 			 * User reads pid to know that there is no data here.
 			 * Update it first.
 			 */
 			barrier();
 
-			cpu_data->tasks[i].prio = 0;
-			cpu_data->tasks[i].ctxswc = 0;
+			task->prio = 0;
+			task->ctxswc = 0;
 			log("dequeue %s %d", rt ? "rt" : "fair", pid);
 			return 0;
 		}

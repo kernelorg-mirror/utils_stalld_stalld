@@ -69,7 +69,8 @@ static int bump_memlock_rlimit(void)
 
 static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 {
-	int is_current, i;
+	struct queued_task *task;
+	int is_current;
 
 	if (!DEBUG_STALLD)
 		return;
@@ -77,14 +78,10 @@ static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 	if (!config_verbose)
 		return;
 
-	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-		if (!stalld_data->tasks[i].pid)
-			continue;
-
-		is_current = (stalld_data->current == stalld_data->tasks[i].pid);
-		log_msg("cpu: %-3d pid: %-8d ctx: %-8lu %s\n", cpu, stalld_data->tasks[i].pid,
-				stalld_data->tasks[i].ctxswc,
-				is_current ? "R" : "");
+	for_each_queued_task(stalld_data, task) {
+		is_current = (stalld_data->current == task->pid);
+		log_msg("cpu: %-3d pid: %-8d ctx: %-8lu %s\n", cpu,
+			task->pid, task->ctxswc, is_current ? "R" : "");
 	}
 }
 
@@ -203,7 +200,6 @@ static int queue_track_parse(struct cpu_info *cpu_info, char *buffer, size_t buf
 	struct task_info *tasks, *task;
 	struct queued_task *qtask;
 	int retval = 0;
-	int i;
 
 	tasks = calloc(MAX_QUEUE_TASK, sizeof(struct task_info));
 	if (tasks == NULL) {
@@ -211,12 +207,7 @@ static int queue_track_parse(struct cpu_info *cpu_info, char *buffer, size_t buf
 		goto error;
 	}
 
-	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-		qtask = &cpu_data->tasks[i];
-
-		if (!qtask->pid)
-			continue;
-
+	for_each_queued_task(cpu_data, qtask) {
 		if (qtask->is_rt)
 			nr_rt_running++;
 
