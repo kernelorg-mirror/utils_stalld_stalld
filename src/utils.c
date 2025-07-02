@@ -969,13 +969,11 @@ static void parse_cpu_list(char *cpulist)
 			end_cpu = cpu;
 
 		if (cpu == end_cpu) {
-			if (config_verbose)
-				printf("cpulist: adding cpu %d\n", cpu);
+			info("cpulist: adding cpu %d\n", cpu);
 			config_monitored_cpus[cpu] = 1;
 		} else {
 			for (i = cpu; i <= end_cpu; i++) {
-				if (config_verbose)
-					printf("cpulist: adding cpu %d\n", i);
+				info("cpulist: adding cpu %d\n", i);
 				config_monitored_cpus[i] = 1;
 			}
 		}

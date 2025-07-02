@@ -370,8 +370,7 @@ int cpu_had_idle_time(struct cpu_info *cpu_info)
 	if (cpu_info->idle_time == idle_time)
 		return 0;
 
-	if (config_verbose)
-		log_msg("last idle time: %ld curr idle time:%ld ", cpu_info->idle_time, idle_time);
+	log_verbose("last idle time: %ld curr idle time:%ld ", cpu_info->idle_time, idle_time);
 
 	/*
 	 * The CPU had idle time!
@@ -402,8 +401,7 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 		cpu = &cpus[i];
 		/* Consider idle a CPU that has its own monitor. */
 		if (cpu->thread_running) {
-			if (config_verbose)
-				log_msg("\t cpu %d has its own monitor, considering idle\n", cpu->id);
+			log_verbose("\t cpu %d has its own monitor, considering idle\n", cpu->id);
 			continue;
 		}
 
@@ -414,8 +412,8 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 			continue;
 		}
 
-		if (config_verbose)
-			log_msg ("\t cpu %d had %ld idle time, and now has %ld\n", cpu->id, cpu->idle_time, idle_time);
+		log_verbose ("\t cpu %d had %ld idle time, and now has %ld\n",
+			     cpu->id, cpu->idle_time, idle_time);
 
 		/* If the idle time did not change, the CPU is busy. */
 		if (cpu->idle_time == idle_time) {
@@ -432,10 +430,14 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 
 void print_waiting_tasks(struct cpu_info *cpu_info)
 {
-	time_t now = time(NULL);
+	time_t now;
 	struct task_info *task;
 	int i;
 
+	if (!config_verbose)
+		return;
+
+	now = time(NULL);
 	printf("CPU %d has %d waiting tasks\n", cpu_info->id, cpu_info->nr_waiting_tasks);
 	if (!cpu_info->nr_waiting_tasks)
 		return;
@@ -443,11 +445,11 @@ void print_waiting_tasks(struct cpu_info *cpu_info)
 	for (i = 0; i < cpu_info->nr_waiting_tasks; i++) {
 		task = &cpu_info->starving[i];
 
-		printf("%15s %9d %9d %9d %9ld\n", task->comm, task->pid, task->prio, task->ctxsw, (now - task->since));
+		printf("%15s %9d %9d %9d %9ld\n",task->comm, task->pid,
+		       task->prio, task->ctxsw, (now - task->since));
 	}
 
 	return;
-
 }
 
 struct cpu_starving_task_info {
@@ -839,8 +841,7 @@ void *cpu_main(void *data)
 
 		if (config_idle_detection) {
 			if (cpu_had_idle_time(cpu)) {
-				if (config_verbose)
-					log_msg("cpu %d had idle time! skipping next phase\n", cpu->id);
+				log_verbose("cpu %d had idle time! skipping next phase\n", cpu->id);
 				nothing_to_do++;
 				goto skipped;
 			}
@@ -850,8 +851,7 @@ void *cpu_main(void *data)
 		if (retval)
 			goto skipped;
 
-		if (config_verbose)
-			print_waiting_tasks(cpu);
+		print_waiting_tasks(cpu);
 
 		if (backend->has_starving_task(cpu)) {
 			nothing_to_do = 0;
@@ -949,8 +949,7 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 			memset(&busy_cpu_list, 0, nr_cpus);
 			has_busy_cpu = get_cpu_busy_list(cpus, nr_cpus, busy_cpu_list);
 			if (!has_busy_cpu) {
-				if (config_verbose)
-					log_msg("all CPUs had idle time, skipping parse\n");
+				log_verbose("all CPUs had idle time, skipping parse\n");
 				goto skipped;
 			}
 		}
@@ -979,9 +978,8 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 			if (retval)
 				continue;
 
-			if (config_verbose)
-				printf("\tchecking cpu %d - rt: %d - starving: %d\n",
-				       i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
+			info("\tchecking cpu %d - rt: %d - starving: %d\n",
+			     i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
 
 			if (check_might_starve_tasks(cpu)) {
 				cpus[i].id = i;
@@ -1017,8 +1015,9 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 
 		cpu = &cpu_starving_vector[i];
 
-		if (config_verbose && cpu->pid)
-			log_msg("\t cpu %d: pid: %d starving for %llu\n", i, cpu->pid, (now - cpu->since));
+		if (cpu->pid)
+			log_verbose("\t cpu %d: pid: %d starving for %llu\n",
+				    i, cpu->pid, (now - cpu->since));
 
 		if (config_log_only)
 			continue;
@@ -1119,8 +1118,7 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 			memset(&busy_cpu_list, 0, nr_cpus);
 			has_busy_cpu = get_cpu_busy_list(cpus, nr_cpus, busy_cpu_list);
 			if (!has_busy_cpu) {
-				if (config_verbose)
-					log_msg("all CPUs had idle time, skipping parse\n");
+				log_verbose("all CPUs had idle time, skipping parse\n");
 				goto skipped;
 			}
 		}
@@ -1146,9 +1144,8 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 			if (retval)
 				continue;
 
-			if (config_verbose)
-				printf("\tchecking cpu %d - rt: %d - starving: %d\n",
-				       i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
+			info("\tchecking cpu %d - rt: %d - starving: %d\n",
+			     i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
 
 		}
 

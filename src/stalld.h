@@ -179,6 +179,12 @@ void __info(const char *fmt, ...);
 
 void log_msg(const char *fmt, ...);
 
+#define log_verbose(fmt, ...)				\
+	do {						\
+		if (config_verbose)			\
+			log_msg(fmt, ##__VA_ARGS__);	\
+	} while (0)
+
 long get_long_from_str(char *start);
 long get_long_after_colon(char *start);
 long get_variable_long_value(char *buffer, const char *variable);
