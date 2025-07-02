@@ -206,6 +206,7 @@ int set_reservation(int period, int reservation);
 int get_tgid(int pid);
 void merge_taks_info(int cpu, struct task_info *old_tasks, int nr_old, struct task_info *new_tasks, int nr_new);
 int set_cpu_affinity(char *cpu_list);
+int check_dl_server_dir_exists(void);
 
 /*
  * Shared variables.

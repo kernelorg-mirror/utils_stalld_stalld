@@ -1273,6 +1273,11 @@ int main(int argc, char **argv)
 	if (config_affinity_cpus)
 		set_cpu_affinity(config_affinity_cpus);
 
+	if (!check_dl_server_dir_exists()) {
+		log_msg("DL-server detected. Operating in log-only mode.\n");
+		config_log_only = 1;
+	}
+
 	/*
 	 * Check RT throttling:
 	 *

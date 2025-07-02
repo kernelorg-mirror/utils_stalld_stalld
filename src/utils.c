@@ -28,6 +28,7 @@
 #include <sched.h>
 #include <linux/sched.h>
 #include <sys/sysinfo.h>
+#include <mntent.h>
 
 #include "stalld.h"
 #include "sched_debug.h"
@@ -1226,4 +1227,87 @@ int parse_args(int argc, char **argv)
 	}
 
 	return(0);
+}
+
+/**
+ * Dynamically finds the mount point of the debugfs filesystem.
+ *
+ * This function reads through /proc/mounts to find an entry with the
+ * filesystem type "debugfs".
+ *
+ * @param mount_path_buf A buffer to store the found debugfs mount path.
+ * @param buf_size The size of the mount_path_buf.
+ * @return 0 on success (debugfs mount point found), -1 if not found or on error.
+ */
+static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size) {
+	FILE *fp;
+	struct mntent *mnt;
+	int ret = 0;
+
+	fp = setmntent("/proc/mounts", "r");
+	if (!fp) {
+		log_msg("Error opening /proc/mounts");
+		return -1;
+	}
+
+	while ((mnt = getmntent(fp))) {
+		if (strcmp(mnt->mnt_type, "debugfs"))
+			continue;
+
+		if (strlen(mnt->mnt_dir) < buf_size) {
+			strncpy(mount_path_buf, mnt->mnt_dir, buf_size - 1);
+			mount_path_buf[buf_size - 1] = '\0';
+		} else {
+			log_msg("Buffer too small for debugfs mount path: %s\n", mnt->mnt_dir);
+			ret = -1;
+		}
+
+		break;
+	}
+
+	endmntent(fp);
+	return ret;
+}
+
+/**
+ * Checks if the 'sched/fair_server' directory exists within debugfs,
+ * dynamically determining the debugfs mount path.
+ *
+ * This function first attempts to find the mount point of the debugfs
+ * filesystem. If found, it then constructs the full path to the
+ * 'sched/fair_server' directory within that mount point. Finally, it uses
+ * the stat() system call to query information about this path and determines
+ * if it exists and is indeed a directory.
+ *
+ * @return 0 if the directory exists and is a directory.
+ * Returns -1 if debugfs is not mounted, or other system error occurs.
+ */
+int check_dl_server_dir_exists(void) {
+	char debugfs_mount_path[256];
+	char full_target_path[512];
+	struct stat st;
+	const char *dl_server_subdir = "/sched/fair_server";
+
+	if (find_debugfs_mount_point(debugfs_mount_path, sizeof(debugfs_mount_path))) {
+		log_msg("Debugfs mount point not found or error during lookup.\n");
+		return -1;
+	}
+
+	if (snprintf(full_target_path, sizeof(full_target_path), "%s%s",debugfs_mount_path,
+		     dl_server_subdir) >= sizeof(full_target_path)) {
+		errno = ENAMETOOLONG;
+		log_msg("Constructed path too long for buffer");
+		return -1;
+	}
+
+	if (stat(full_target_path, &st) == 0) {
+		if (S_ISDIR(st.st_mode))
+			return 0;
+
+		log_msg("Path '%s' exists but is not a directory.\n", full_target_path);
+		return -1;
+	}
+
+	log_msg("DL-server not detected: %s\n", strerror(errno));
+	return -1;
 }
