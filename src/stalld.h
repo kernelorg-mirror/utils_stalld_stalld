@@ -110,7 +110,8 @@ struct stalld_backend {
 	void (*destroy)(void);
 };
 
-#if ! __GLIBC_PREREQ(2, 41) && !defined(GLIBC_HAS_SCHED_ATTR)
+/* sched_attr is not defined in glibc < 2.41, unless backported */
+#ifndef SCHED_ATTR_SIZE_VER0
 
 #ifdef __x86_64__
 # define __NR_sched_setattr 314
