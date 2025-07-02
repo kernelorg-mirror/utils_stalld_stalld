@@ -67,7 +67,7 @@ static int bump_memlock_rlimit(void)
 	return setrlimit(RLIMIT_MEMLOCK, &rlim_new);
 }
 
-#ifdef DEBUG_BPF
+#ifdef DEBUG_STALLD
 static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 {
 	int is_current, i;
@@ -95,7 +95,7 @@ static int get_cpu_data(struct stalld_cpu_data *stalld_cpu_data, int cpu)
 		return ENODATA;
 	}
 
-#ifdef DEBUG_BPF
+#ifdef DEBUG_STALLD
 	if (config_verbose)
 		print_queued_tasks(stalld_cpu_data, cpu);
 #endif

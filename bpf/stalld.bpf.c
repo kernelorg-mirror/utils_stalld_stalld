@@ -59,7 +59,7 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 		return 0;
 
 	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-#ifdef BPF_DEBUG
+#ifdef DEBUG_STALLD
 		bpf_printk("slot %d: %d %d", i, cpu_data->tasks[i].pid, cpu_data->tasks[i].ctxswc);
 #endif
 		if (cpu_data->tasks[i].pid == 0 || cpu_data->tasks[i].pid == pid) {
@@ -74,7 +74,7 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 			 */
 			barrier();
 			cpu_data->tasks[i].pid = pid;
-#ifdef BPF_DEBUG
+#ifdef DEBUG_STALLD
 			bpf_printk("queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
 #endif
 
@@ -82,7 +82,7 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 		}
 	}
 
-#ifdef BPF_DEBUG
+#ifdef DEBUG_STALLD
 	bpf_printk("error: queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
 #endif
 
@@ -114,14 +114,14 @@ static int dequeue_task(struct task_struct *p, struct rq *rq, int rt)
 
 			cpu_data->tasks[i].prio = 0;
 			cpu_data->tasks[i].ctxswc = 0;
-#ifdef BPF_DEBUG
+#ifdef DEBUG_STALLD
 			bpf_printk("dequeue %s %d", rt ? "rt" : "fair", pid);
 #endif
 			return 0;
 		}
 	}
 
-#ifdef BPF_DEBUG
+#ifdef DEBUG_STALLD
 	bpf_printk("error: dequeue %s %d", rt ? "rt" : "fair", pid);
 #endif
 	return 0;
