@@ -50,7 +50,7 @@ WOPTS	:= 	-Wall -Werror=format-security
 
 SOPTS	:= 	-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1
 
-DEFS	:=	-DUSE_BPF=$(USE_BPF) -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS
+DEFS	:=	-DUSE_BPF=$(USE_BPF) -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -DDEBUG_STALLD=0
 
 # note that RPMCFLAGS and RPMLDFLAGS are variables that come from the specfile when
 # building for Fedora/CentOS/RHEL/et al
@@ -145,7 +145,8 @@ bpf/vmlinux.h:
 # The .bpf.c needs to be transformed into the .bpf.o.
 # The .bpf.o is then required to build the .skel.h.
 bpf/stalld.bpf.o: bpf/vmlinux.h bpf/stalld.bpf.c
-	@$(CLANG) -g -O2 -target bpf $(CLANGARCH) -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
+	@$(CLANG) -g -O2 -target bpf $(CLANGARCH) -DDEBUG_STALLD=0 -D__TARGET_ARCH_$(ARCH) \
+		$(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # This is the second step: The .bpf.o object is translated into

@@ -28,7 +28,7 @@ struct {
 	__type(value, struct stalld_cpu_data);
 } stalld_per_cpu_data SEC(".maps");
 
-#ifdef DEBUG_STALLD
+#if DEBUG_STALLD
 #define log(msg, ...) bpf_printk(msg, ##__VA_ARGS__)
 #else
 #define log(msg, ...) do {} while(0)
