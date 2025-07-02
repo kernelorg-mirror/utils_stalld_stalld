@@ -104,20 +104,19 @@ static int dequeue_task(struct task_struct *p, struct rq *rq, int rt)
 	if (!cpu_data->monitoring)
 		return 0;
 
-	for_each_task_entry(cpu_data, task) {
-		if (task->pid == pid) {
-			task->pid = 0;
-			/*
-			 * User reads pid to know that there is no data here.
-			 * Update it first.
-			 */
-			barrier();
+	task = find_queued_task(cpu_data, pid);
+	if (task) {
+		task->pid = 0;
+		/*
+		 * User reads pid to know that there is no data here.
+		 * Update it first.
+		 */
+		barrier();
 
-			task->prio = 0;
-			task->ctxswc = 0;
-			log("dequeue %s %d", rt ? "rt" : "fair", pid);
-			return 0;
-		}
+		task->prio = 0;
+		task->ctxswc = 0;
+		log("dequeue %s %d", rt ? "rt" : "fair", pid);
+		return 0;
 	}
 
 	log("error: dequeue %s %d", rt ? "rt" : "fair", pid);

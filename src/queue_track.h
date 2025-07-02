@@ -97,6 +97,33 @@ struct stalld_cpu_data {
 	for_each_task_entry(cpu_data, task)	\
 		if (task->pid)
 
+/**
+ * find_queued_task - Search for a task within a CPU's queued_task array
+ * @cpu_data: A pointer to the `stalld_cpu_data` structure for a specific CPU.
+ * @pid:      The Process ID (PID) of the task to search for.
+ *
+ * This function iterates through all possible task slots within the
+ * `tasks` array of the provided `cpu_data`. It returns a pointer to the
+ * `queued_task` structure if an entry with a matching PID is found.
+ * If no task with the given PID is found after checking all slots,
+ * the function returns `NULL`.
+ *
+ * This helper is used by the BPF program to efficiently locate tasks
+ * for operations like enqueuing or dequeuing.
+ */
+static inline struct queued_task *find_queued_task(struct stalld_cpu_data *cpu_data, long pid)
+{
+	struct queued_task *task;
+
+	for_each_task_entry(cpu_data, task) {
+		if (task->pid == pid)
+			return task;
+	}
+
+	// we don't have the NULL definition
+	return (struct queued_task *) 0;
+}
+
 extern struct stalld_backend queue_track_backend;
 
 #endif /* __QUEUE_TRACK_H */
