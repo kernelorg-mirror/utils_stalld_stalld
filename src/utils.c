@@ -762,6 +762,7 @@ static void print_usage(void)
 		"          -k/--log_kmsg: print log to the kernel buffer",
 		"          -s/--log_syslog: print log to syslog",
 		"          -f/--foreground: run in foreground [implict when -v]",
+		"	   -e,--no_idle_detection: do not detect idle CPUs",
 		"        boosting options:",
 		"          -p/--boost_period: SCHED_DEADLINE period [ns] that the starving task will receive",
 		"          -r/--boost_runtime: SCHED_DEADLINE runtime [ns] that the starving task will receive",
@@ -1021,13 +1022,14 @@ int parse_args(int argc, char **argv)
 			{"ignore_processes",    required_argument, 0, 'I'},
 			{"backend",		required_argument, 0, 'b'},
 			{"affinity",		required_argument, 0, 'a'},
+			{"no_idle_detection",	no_argument,	   0, 'e'},
 			{0, 0, 0, 0}
 		};
 
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "lvkfAOMhsp:r:d:t:c:FVSg:i:I:R:b:a:",
+		c = getopt_long(argc, argv, "lvkfAOMhsp:r:d:t:c:FVSg:i:I:R:b:a:e",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -1168,6 +1170,9 @@ int parse_args(int argc, char **argv)
 			break;
 		case 'a':
 			config_affinity_cpus = optarg;
+			break;
+		case 'e':
+			config_idle_detection = 0;
 			break;
 		case '?':
 			usage("Invalid option");

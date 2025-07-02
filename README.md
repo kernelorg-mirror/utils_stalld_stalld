@@ -35,6 +35,7 @@ option.
 - -v/--verbose: print info to the std output [false]
 - -k/--log_kmsg: print log to the kernel buffer [false]
 - -s/--log_syslog: print log to syslog [true]
+- -e,--no_idle_detection: do not detect idle CPUs [false]
 
 ### Startup options
 - -c/--cpu: list of cpus to monitor for stalled threads [all cpus]
