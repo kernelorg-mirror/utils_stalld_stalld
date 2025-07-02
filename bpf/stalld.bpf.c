@@ -28,6 +28,12 @@ struct {
 	__type(value, struct stalld_cpu_data);
 } stalld_per_cpu_data SEC(".maps");
 
+#ifdef DEBUG_STALLD
+#define log(msg, ...) bpf_printk(msg, ##__VA_ARGS__)
+#else
+#define log(msg, ...) do {} while(0)
+#endif
+
 /**
  * Each CPU has its own set of statistics stored on a per-cpu
  * array, this function returns the variable of the current
@@ -59,9 +65,8 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 		return 0;
 
 	for (i = 0; i < MAX_QUEUE_TASK; i++) {
-#ifdef DEBUG_STALLD
-		bpf_printk("slot %d: %d %d", i, cpu_data->tasks[i].pid, cpu_data->tasks[i].ctxswc);
-#endif
+		log("slot %d: %d %d", i, cpu_data->tasks[i].pid, cpu_data->tasks[i].ctxswc);
+
 		if (cpu_data->tasks[i].pid == 0 || cpu_data->tasks[i].pid == pid) {
 			cpu_data->tasks[i].ctxswc = ctxswc;
 			cpu_data->tasks[i].prio = prio;
@@ -74,17 +79,12 @@ static int enqueue_task(struct task_struct *p, struct rq *rq, int rt)
 			 */
 			barrier();
 			cpu_data->tasks[i].pid = pid;
-#ifdef DEBUG_STALLD
-			bpf_printk("queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
-#endif
-
+			log("queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
 			return 0;
 		}
 	}
 
-#ifdef DEBUG_STALLD
-	bpf_printk("error: queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
-#endif
+	log("error: queue %s %d %d", rt ? "rt" : "fair", pid, ctxswc);
 
 
 	return 0;
@@ -114,16 +114,12 @@ static int dequeue_task(struct task_struct *p, struct rq *rq, int rt)
 
 			cpu_data->tasks[i].prio = 0;
 			cpu_data->tasks[i].ctxswc = 0;
-#ifdef DEBUG_STALLD
-			bpf_printk("dequeue %s %d", rt ? "rt" : "fair", pid);
-#endif
+			log("dequeue %s %d", rt ? "rt" : "fair", pid);
 			return 0;
 		}
 	}
 
-#ifdef DEBUG_STALLD
-	bpf_printk("error: dequeue %s %d", rt ? "rt" : "fair", pid);
-#endif
+	log("error: dequeue %s %d", rt ? "rt" : "fair", pid);
 	return 0;
 }
 
