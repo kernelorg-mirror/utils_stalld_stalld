@@ -59,9 +59,15 @@ DEFS	:=	-DUSE_BPF=$(USE_BPF) -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -DDEBUG_S
 # building for Fedora/CentOS/RHEL/et al
 
 ifeq ($(RPMCFLAGS),)
-CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS) $(DEFS)
+CFLAGS	:=	-DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS) $(DEFS)
 else
 CFLAGS	:=	 $(RPMCFLAGS) $(DEFS)
+endif
+
+ifeq ($(DEBUG),0)
+CFLAGS	+=	-g -O2
+else
+CFLAGS	+=	-g3
 endif
 $(info CFLAGS=$(CFLAGS))
 
