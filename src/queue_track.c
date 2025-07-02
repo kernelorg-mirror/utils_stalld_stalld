@@ -67,10 +67,15 @@ static int bump_memlock_rlimit(void)
 	return setrlimit(RLIMIT_MEMLOCK, &rlim_new);
 }
 
-#if DEBUG_STALLD
 static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 {
 	int is_current, i;
+
+	if (!DEBUG_STALLD)
+		return;
+
+	if (!config_verbose)
+		return;
 
 	for (i = 0; i < MAX_QUEUE_TASK; i++) {
 		if (!stalld_data->tasks[i].pid)
@@ -82,7 +87,6 @@ static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 				is_current ? "R" : "");
 	}
 }
-#endif
 
 static int get_cpu_data(struct stalld_cpu_data *stalld_cpu_data, int cpu)
 {
@@ -95,10 +99,7 @@ static int get_cpu_data(struct stalld_cpu_data *stalld_cpu_data, int cpu)
 		return ENODATA;
 	}
 
-#if DEBUG_STALLD
-	if (config_verbose)
-		print_queued_tasks(stalld_cpu_data, cpu);
-#endif
+	print_queued_tasks(stalld_cpu_data, cpu);
 
 	return 0;
 }
