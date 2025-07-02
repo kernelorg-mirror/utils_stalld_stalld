@@ -6,3 +6,8 @@ tests/test01
 stalld
 bpf/vmlinux.h
 src/stalld.skel.h
+GPATH
+GRTAGS
+GTAGS
+compile_commands.json
+.cache
