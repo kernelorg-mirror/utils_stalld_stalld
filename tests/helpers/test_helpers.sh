@@ -407,6 +407,36 @@ stop_stalld() {
 	fi
 }
 
+# Kill any existing stalld processes (cleanup from previous runs)
+# This ensures a clean slate before starting tests
+kill_existing_stalld() {
+	local pids=$(pgrep -x stalld 2>/dev/null)
+	if [ -n "${pids}" ]; then
+		echo "Killing existing stalld processes: ${pids}"
+		for pid in ${pids}; do
+			# Try graceful shutdown first
+			kill ${pid} 2>/dev/null || true
+		done
+		sleep 0.5
+		# Force kill any remaining
+		pids=$(pgrep -x stalld 2>/dev/null)
+		if [ -n "${pids}" ]; then
+			for pid in ${pids}; do
+				kill -9 ${pid} 2>/dev/null || true
+			done
+			sleep 0.2
+		fi
+		# Verify all killed
+		pids=$(pgrep -x stalld 2>/dev/null)
+		if [ -n "${pids}" ]; then
+			echo -e "${YELLOW}WARNING: Could not kill all stalld processes: ${pids}${NC}"
+			return 1
+		fi
+		echo "All existing stalld processes killed"
+	fi
+	return 0
+}
+
 # Cleanup function (call in trap)
 cleanup() {
 	local exit_code=$?
@@ -711,6 +741,9 @@ disable_dl_server() {
 # This is the recommended way to set up test isolation
 setup_test_environment() {
 	echo "Setting up test environment..."
+
+	# Kill any existing stalld processes from previous runs
+	kill_existing_stalld
 
 	# Save and disable RT throttling
 	save_rt_throttling
@@ -1022,7 +1055,7 @@ export -f start_test end_test
 export -f assert_equals assert_contains assert_not_contains
 export -f assert_file_exists assert_file_not_exists
 export -f assert_process_running assert_process_not_running
-export -f start_stalld stop_stalld cleanup
+export -f start_stalld stop_stalld kill_existing_stalld cleanup
 export -f wait_for_log_message
 export -f get_thread_policy get_thread_priority
 export -f create_cpu_load

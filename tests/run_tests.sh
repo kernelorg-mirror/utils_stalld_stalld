@@ -220,6 +220,15 @@ cleanup_runner() {
 	fi
 
 	if [ $EUID -eq 0 ]; then
+		# Kill any remaining stalld processes
+		local pids=$(pgrep -x stalld 2>/dev/null)
+		if [ -n "${pids}" ]; then
+			echo -e "${BLUE}Cleaning up remaining stalld processes: ${pids}${NC}"
+			for pid in ${pids}; do
+				kill -9 ${pid} 2>/dev/null || true
+			done
+		fi
+
 		restore_dl_server_state
 		restore_rt_throttling_state
 	fi
@@ -236,12 +245,45 @@ handle_interrupt() {
 trap cleanup_runner EXIT
 trap handle_interrupt INT TERM
 
+# Kill any existing stalld processes before tests
+kill_existing_stalld_processes() {
+	local pids=$(pgrep -x stalld 2>/dev/null)
+	if [ -n "${pids}" ]; then
+		echo -e "${BLUE}Killing existing stalld processes: ${pids}${NC}" | tee -a "${LOG_FILE}"
+		for pid in ${pids}; do
+			kill ${pid} 2>/dev/null || true
+		done
+		sleep 0.5
+		# Force kill any remaining
+		pids=$(pgrep -x stalld 2>/dev/null)
+		if [ -n "${pids}" ]; then
+			for pid in ${pids}; do
+				kill -9 ${pid} 2>/dev/null || true
+			done
+			sleep 0.2
+		fi
+		# Verify
+		pids=$(pgrep -x stalld 2>/dev/null)
+		if [ -n "${pids}" ]; then
+			echo -e "${YELLOW}WARNING: Could not kill all stalld processes: ${pids}${NC}" | tee -a "${LOG_FILE}"
+		else
+			echo -e "${GREEN}All existing stalld processes killed${NC}" | tee -a "${LOG_FILE}"
+		fi
+		echo "" | tee -a "${LOG_FILE}"
+	fi
+}
+
 # Initialize
 init_tests() {
 	mkdir -p "${RESULTS_DIR}"
 
 	print_banner | tee "${LOG_FILE}"
 	echo "" | tee -a "${LOG_FILE}"
+
+	# Kill any existing stalld processes from previous runs
+	if [ $EUID -eq 0 ]; then
+		kill_existing_stalld_processes
+	fi
 
 	# Save and disable RT throttling if running as root
 	if [ $EUID -eq 0 ]; then
