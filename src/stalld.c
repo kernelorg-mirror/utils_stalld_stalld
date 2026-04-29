@@ -48,7 +48,7 @@ const char *version = VERSION;
  */
 int config_verbose = 0;
 int config_write_kmesg = 0;
-int config_log_syslog = 1;
+int config_log_syslog = 0;
 int config_log_only = 0;
 int config_foreground = 0;
 

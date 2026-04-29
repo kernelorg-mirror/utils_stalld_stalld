@@ -163,4 +163,46 @@ fi
 
 stop_stalld
 
+# Test 5: No syslog without -s flag
+test_section "Test 5: No syslog without -s flag"
+
+if [ -n "${SYSLOG_FILE}" ]; then
+	SYSLOG_BEFORE=$(wc -l < "${SYSLOG_FILE}")
+
+	start_stalld -f -l -t 5
+	sleep 1
+
+	SYSLOG_AFTER=$(wc -l < "${SYSLOG_FILE}")
+
+	if [ ${SYSLOG_AFTER} -gt ${SYSLOG_BEFORE} ]; then
+		LINES_ADDED=$((SYSLOG_AFTER - SYSLOG_BEFORE))
+		if tail -n "${LINES_ADDED}" "${SYSLOG_FILE}" | has_stalld_log; then
+			fail "stalld messages found in syslog without -s flag"
+		else
+			pass "no stalld messages in syslog without -s flag"
+		fi
+	else
+		pass "no new messages in syslog (stalld stayed quiet)"
+	fi
+
+	stop_stalld
+elif command -v journalctl >/dev/null 2>&1; then
+	log "Using journalctl instead of syslog file"
+
+	START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+
+	start_stalld -f -l -t 5
+	sleep 1
+
+	if journalctl -t stalld --since "${START_TIME}" 2>/dev/null | has_stalld_log; then
+		fail "stalld messages found in journal without -s flag"
+	else
+		pass "no stalld messages in journal without -s flag"
+	fi
+
+	stop_stalld
+else
+	log "SKIP: neither syslog nor journalctl available"
+fi
+
 end_test
