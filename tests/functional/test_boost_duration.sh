@@ -74,7 +74,7 @@ log "Creating starvation on CPU ${TEST_CPU} for ${long_starvation}s"
 start_starvation_gen -c "${TEST_CPU}" -p 80 -n 2 -d ${long_starvation}
 
 # Wait for actual boosting
-assert_boost_detected "${STALLD_LOG}" "Boost with ${long_duration}s duration"
+assert_boost_detected "${STALLD_LOG}" "Boost with ${long_duration}s duration" 20
 
 # Cleanup
 cleanup_scenario "${STARVE_PID}"

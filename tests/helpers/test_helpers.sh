@@ -159,7 +159,7 @@ find_starved_child() {
 assert_starvation_detected() {
 	local log_file=$1
 	local message=${2:-"Starvation detected"}
-	local timeout=${3:-30}
+	local timeout=${3:-15}
 	local cpu=${4:-}
 
 	if wait_for_starvation_detected "${log_file}" "${timeout}" "${cpu}"; then
@@ -176,7 +176,7 @@ assert_starvation_detected() {
 assert_boost_detected() {
 	local log_file=$1
 	local message=${2:-"Boost detected"}
-	local timeout=${3:-30}
+	local timeout=${3:-15}
 
 	if wait_for_boost_detected "${log_file}" "${timeout}"; then
 		pass "${message}"
@@ -695,7 +695,7 @@ wait_for_log_message() {
 # Usage: wait_for_stalld_ready <log_file> [timeout]
 wait_for_stalld_ready() {
 	local log_file=$1
-	local timeout=${2:-15}
+	local timeout=${2:-5}
 	wait_for_log_message "checking cpu\|waiting tasks\|skipping" "${timeout}" "${log_file}"
 }
 
@@ -704,7 +704,7 @@ wait_for_stalld_ready() {
 # Usage: wait_for_starvation_detected <log_file> [timeout] [cpu]
 wait_for_starvation_detected() {
 	local log_file=$1
-	local timeout=${2:-30}
+	local timeout=${2:-15}
 	local cpu=${3:-}
 	local pattern="starved on CPU"
 	if [ -n "${cpu}" ]; then
@@ -718,7 +718,7 @@ wait_for_starvation_detected() {
 # Usage: wait_for_boost_detected <log_file> [timeout]
 wait_for_boost_detected() {
 	local log_file=$1
-	local timeout=${2:-30}
+	local timeout=${2:-15}
 	wait_for_log_message "boosted pid" "${timeout}" "${log_file}"
 }
 
@@ -729,7 +729,7 @@ wait_for_n_log_matches() {
 	local pattern=$1
 	local count=$2
 	local log_file=$3
-	local timeout=${4:-30}
+	local timeout=${4:-15}
 	local end=$((SECONDS + timeout))
 
 	while [ $SECONDS -lt $end ]; do
