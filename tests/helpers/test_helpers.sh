@@ -360,6 +360,28 @@ process_alive() {
 	kill -0 "$1" 2>/dev/null
 }
 
+# Poll for a process to exit within a timeout.
+# Returns 0 if the process exits, 1 if still alive after timeout.
+#
+# Usage: wait_for_process_exit <pid> <timeout_seconds>
+wait_for_process_exit() {
+	local pid="$1"
+	local timeout="$2"
+	local elapsed=0
+
+	while process_alive "${pid}" && [ ${elapsed} -lt ${timeout} ]; do
+		for i in $(seq 1 10); do
+			sleep 0.1
+			if ! process_alive "${pid}"; then
+				return 0
+			fi
+		done
+		elapsed=$((elapsed + 1))
+	done
+
+	! process_alive "${pid}"
+}
+
 send_signal() {
 	kill -"$1" "$2" 2>/dev/null || true
 }
@@ -537,32 +559,23 @@ start_stalld() {
 # SIGKILL if needed. Guarantees the process is dead before
 # returning so callers do not need post-stop sleeps.
 stop_stalld() {
-	if [ -n "${STALLD_PID}" ]; then
-		if process_alive ${STALLD_PID}; then
-			# Try graceful shutdown first (SIGTERM)
-			send_signal TERM ${STALLD_PID}
-
-			# Poll for graceful exit (up to 5 seconds)
-			local timeout=5
-			local elapsed=0
-			while process_alive ${STALLD_PID} && [ ${elapsed} -lt ${timeout} ]; do
-				sleep 1
-				elapsed=$((elapsed + 1))
-			done
-
-			# Escalate to SIGKILL if still running
-			if process_alive ${STALLD_PID}; then
-				send_signal KILL ${STALLD_PID}
-				# Poll for forced termination (up to 5 seconds)
-				elapsed=0
-				while process_alive ${STALLD_PID} && [ ${elapsed} -lt ${timeout} ]; do
-					sleep 1
-					elapsed=$((elapsed + 1))
-				done
-			fi
-		fi
-		STALLD_PID=""
+	if [ -z "${STALLD_PID}" ]; then
+		return
 	fi
+
+	if process_alive ${STALLD_PID}; then
+		# Try graceful shutdown first (SIGTERM)
+		send_signal TERM ${STALLD_PID}
+
+		# Poll for graceful exit (up to 5 seconds)
+		if ! wait_for_process_exit ${STALLD_PID} 5; then
+			# Escalate to SIGKILL if still running
+			send_signal KILL ${STALLD_PID}
+			# Poll for forced termination (up to 5 seconds)
+			wait_for_process_exit ${STALLD_PID} 5
+		fi
+	fi
+	STALLD_PID=""
 }
 
 # Kill any existing stalld processes (cleanup from previous runs)
@@ -607,31 +620,17 @@ cleanup() {
 	# Stop stalld
 	stop_stalld
 
-	# Small delay to let processes terminate
-	sleep 0.2
-
 	# Kill any tracked processes
 	# Use SIGKILL (-9) and ignore EPERM errors (process may have different privileges)
 	for pid in "${CLEANUP_PIDS[@]}"; do
 		if [ -n "${pid}" ] && [ "${pid}" -gt 0 ] 2>/dev/null; then
 			# Check if process exists
-			if process_alive ${pid}; then
-				send_signal TERM ${pid}
+			if process_alive "${pid}"; then
+				send_signal TERM "${pid}"
 
-				local timeout=5
-				local elapsed=0
-				while process_alive ${pid} && [ ${elapsed} -lt ${timeout} ]; do
-					sleep 1
-					elapsed=$((elapsed + 1))
-				done
-
-				if process_alive ${pid}; then
-					send_signal KILL ${pid}
-					elapsed=0
-					while process_alive ${pid} && [ ${elapsed} -lt ${timeout} ]; do
-						sleep 1
-						elapsed=$((elapsed + 1))
-					done
+				if ! wait_for_process_exit "${pid}" 5; then
+					send_signal KILL "${pid}"
+					wait_for_process_exit "${pid}" 5
 				fi
 			fi
 		fi
@@ -1323,7 +1322,7 @@ export -f start_test end_test test_section cleanup_scenario find_starved_child
 export -f assert_starvation_detected assert_boost_detected assert_stalld_rejects assert_log_contains assert_success
 export -f pass fail assert_equals assert_contains assert_not_contains
 export -f assert_file_exists assert_file_not_exists
-export -f process_alive send_signal assert_process_running assert_process_not_running
+export -f process_alive wait_for_process_exit send_signal assert_process_running assert_process_not_running
 export -f start_stalld stop_stalld kill_existing_stalld cleanup
 export -f wait_for_log_message wait_for_stalld_ready wait_for_starvation_detected wait_for_boost_detected wait_for_n_log_matches
 export -f get_thread_policy get_thread_priority
