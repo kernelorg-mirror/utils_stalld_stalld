@@ -58,7 +58,7 @@ threshold=5
 boost_duration=3
 
 log "Creating FIFO-on-FIFO starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 1 -d 12
 
 # Find the starved task (blockee) PID
 blockee_pid=$(find_starved_child "${STARVE_PID}")
@@ -180,7 +180,7 @@ rm -f "${STALLD_LOG}"
 threshold=5
 
 log "Creating FIFO-on-FIFO starvation"
-start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d 20 -v
+start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d 12 -v
 
 # Extract blocker and blockee PIDs from starvation_gen output
 # The output shows "Blocker TID: <pid>" and "Blockee N TID: <pid>"

@@ -64,7 +64,7 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -t $threshold -c ${TEST_CPU} -a
 
 # Create starvation
 log "Creating starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 15
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 10
 
 # Try to find the boosted task PID before it gets boosted
 tracked_pid=$(find_starved_child "${STARVE_PID}")
@@ -106,7 +106,7 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -t $threshold -c ${TEST_CPU} -a
 
 # Create starvation
 log "Creating starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 12
 
 # Find a starved task before it gets boosted
 tracked_pid=$(find_starved_child "${STARVE_PID}")
@@ -165,12 +165,12 @@ else
 
     # Create starvation on CPU0
     log "Creating starvation on CPU ${CPU0}"
-    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 10
     STARVE_PID0=${STARVE_PID}
 
     # Create starvation on CPU1
     log "Creating starvation on CPU ${CPU1}"
-    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 10
     STARVE_PID1=${STARVE_PID}
 
     # Wait for boosting on both CPUs

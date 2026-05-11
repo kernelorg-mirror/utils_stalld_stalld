@@ -33,7 +33,7 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -t $threshold -c ${TEST_CPU} -a ${ST
 
 # Create starvation (starvation_gen creates SCHED_FIFO blocker prio 80, blockee prio 1)
 log "Creating starvation with SCHED_FIFO tasks (blocker prio 80, blockee prio 1)"
-start_starvation_gen -c ${TEST_CPU} -p 80 -b 1 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -b 1 -n 1 -d 12
 
 # Find the starved task
 tracked_pid=$(find_starved_child "${STARVE_PID}")
@@ -120,7 +120,7 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -t $threshold -c ${TEST_CPU} -a ${ST
 
 # Use -o flag to create SCHED_OTHER blockees
 log "Creating SCHED_OTHER starvation (RT blocker prio 80, SCHED_OTHER blockee)"
-start_starvation_gen -c ${TEST_CPU} -p 80 -o -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -o -n 1 -d 12
 
 # Find the starved SCHED_OTHER task
 tracked_pid=$(find_starved_child "${STARVE_PID}")

@@ -92,8 +92,8 @@ log "Starting stalld with ${threshold}s threshold and ${duration}s boost duratio
 start_stalld_with_log "${STALLD_LOG}" -f -v -c "${TEST_CPU}" -a ${STALLD_CPU} -t ${threshold} -d ${duration}
 
 # Create starvation with a specific task we can track
-log "Creating starvation on CPU ${TEST_CPU} for 15s"
-start_starvation_gen -c "${TEST_CPU}" -p 80 -n 1 -d 15
+log "Creating starvation on CPU ${TEST_CPU} for 10s"
+start_starvation_gen -c "${TEST_CPU}" -p 80 -n 1 -d 10
 
 # Wait for actual boosting
 assert_boost_detected "${STALLD_LOG}" "Boost with ${duration}s boost duration"

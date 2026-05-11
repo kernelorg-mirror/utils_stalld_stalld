@@ -101,7 +101,7 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -l -t $threshold -c ${TEST_CPU}
 
 # Create starvation
 log "Creating starvation"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 12
 
 # Wait for starvation detection
 wait_for_starvation_detected "${STALLD_LOG}"
@@ -174,11 +174,11 @@ else
 
     # Create starvation on both CPUs
     log "Creating starvation on CPU ${CPU0}"
-    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 10
     STARVE_PID0=${STARVE_PID}
 
     log "Creating starvation on CPU ${CPU1}"
-    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 10
     STARVE_PID1=${STARVE_PID}
 
     # Wait for starvation detection on both CPUs

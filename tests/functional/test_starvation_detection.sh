@@ -52,7 +52,7 @@ threshold=5
 
 # Create starvation
 log "Creating starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 15
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 10
 
 log "Starting stalld with ${threshold}s threshold (log-only mode)"
 start_stalld_with_log "${STALLD_LOG}" -f -v -N -l -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU}

@@ -50,7 +50,7 @@ rm -f "${STALLD_LOG}"
 
 # Create starvation FIRST
 log "Creating starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 15
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 10
 tracked_pid=$(find_starved_child "${STARVE_PID}")
 
 log "Starting stalld with -F flag (FIFO boosting)"
@@ -103,7 +103,7 @@ rm -f "${STALLD_LOG}"
 
 # Create starvation FIRST
 log "Creating starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 12
 
 start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -N -F -A -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU} \
     -d ${boost_duration} -p ${boost_period} -r ${boost_runtime}
