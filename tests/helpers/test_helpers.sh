@@ -119,7 +119,7 @@ test_section() {
 cleanup_scenario() {
 	for pid in "$@"; do
 		if [ -n "$pid" ]; then
-			kill -TERM "$pid" 2>/dev/null || true
+			send_signal TERM "$pid"
 			wait "$pid" 2>/dev/null || true
 		fi
 	done
@@ -356,11 +356,19 @@ assert_file_not_exists() {
 	fi
 }
 
+process_alive() {
+	kill -0 "$1" 2>/dev/null
+}
+
+send_signal() {
+	kill -"$1" "$2" 2>/dev/null || true
+}
+
 assert_process_running() {
 	local pid=$1
 	local message=${2:-"Process ${pid} should be running"}
 
-	if kill -0 ${pid} 2>/dev/null; then
+	if process_alive ${pid}; then
 		pass "${message}"
 	else
 		fail "${message}"
@@ -371,7 +379,7 @@ assert_process_not_running() {
 	local pid=$1
 	local message=${2:-"Process ${pid} should not be running"}
 
-	if ! kill -0 ${pid} 2>/dev/null; then
+	if ! process_alive ${pid}; then
 		pass "${message}"
 	else
 		fail "${message}"
@@ -476,7 +484,7 @@ start_stalld() {
 
 			# If pgrep didn't find it, fall back to the shell PID
 			if [ -z "${STALLD_PID}" ]; then
-				if kill -0 ${shell_pid} 2>/dev/null; then
+				if process_alive ${shell_pid}; then
 					STALLD_PID=${shell_pid}
 				fi
 			fi
@@ -488,11 +496,11 @@ start_stalld() {
 				sleep 0.5
 
 				# Check if shell_pid has exited (daemonization complete)
-				if ! kill -0 ${shell_pid} 2>/dev/null; then
+				if ! process_alive ${shell_pid}; then
 					# Shell process exited, daemon should be running
 					# Use pgrep -n to find the newest stalld process
 					STALLD_PID=$(pgrep -n -x stalld 2>/dev/null)
-					if [ -n "${STALLD_PID}" ] && kill -0 ${STALLD_PID} 2>/dev/null; then
+					if [ -n "${STALLD_PID}" ] && process_alive ${STALLD_PID}; then
 						break
 					fi
 				fi
@@ -514,7 +522,7 @@ start_stalld() {
 		return 1
 	fi
 
-	if ! kill -0 ${STALLD_PID} 2>/dev/null; then
+	if ! process_alive ${STALLD_PID}; then
 		echo -e "${RED}ERROR: stalld PID ${STALLD_PID} is not running${NC}"
 		return 1
 	fi
@@ -530,24 +538,24 @@ start_stalld() {
 # returning so callers do not need post-stop sleeps.
 stop_stalld() {
 	if [ -n "${STALLD_PID}" ]; then
-		if kill -0 ${STALLD_PID} 2>/dev/null; then
+		if process_alive ${STALLD_PID}; then
 			# Try graceful shutdown first (SIGTERM)
-			kill ${STALLD_PID} 2>/dev/null || true
+			send_signal TERM ${STALLD_PID}
 
 			# Poll for graceful exit (up to 5 seconds)
 			local timeout=5
 			local elapsed=0
-			while kill -0 ${STALLD_PID} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
+			while process_alive ${STALLD_PID} && [ ${elapsed} -lt ${timeout} ]; do
 				sleep 1
 				elapsed=$((elapsed + 1))
 			done
 
 			# Escalate to SIGKILL if still running
-			if kill -0 ${STALLD_PID} 2>/dev/null; then
-				kill -9 ${STALLD_PID} 2>/dev/null || true
+			if process_alive ${STALLD_PID}; then
+				send_signal KILL ${STALLD_PID}
 				# Poll for forced termination (up to 5 seconds)
 				elapsed=0
-				while kill -0 ${STALLD_PID} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
+				while process_alive ${STALLD_PID} && [ ${elapsed} -lt ${timeout} ]; do
 					sleep 1
 					elapsed=$((elapsed + 1))
 				done
@@ -565,14 +573,14 @@ kill_existing_stalld() {
 		echo "Killing existing stalld processes: ${pids}"
 		for pid in ${pids}; do
 			# Try graceful shutdown first
-			kill ${pid} 2>/dev/null || true
+			send_signal TERM ${pid}
 		done
 		sleep 0.5
 		# Force kill any remaining
 		pids=$(pgrep -x stalld 2>/dev/null)
 		if [ -n "${pids}" ]; then
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 			sleep 0.2
 		fi
@@ -607,20 +615,20 @@ cleanup() {
 	for pid in "${CLEANUP_PIDS[@]}"; do
 		if [ -n "${pid}" ] && [ "${pid}" -gt 0 ] 2>/dev/null; then
 			# Check if process exists
-			if kill -0 ${pid} 2>/dev/null; then
-				kill ${pid} 2>/dev/null || true
+			if process_alive ${pid}; then
+				send_signal TERM ${pid}
 
 				local timeout=5
 				local elapsed=0
-				while kill -0 ${pid} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
+				while process_alive ${pid} && [ ${elapsed} -lt ${timeout} ]; do
 					sleep 1
 					elapsed=$((elapsed + 1))
 				done
 
-				if kill -0 ${pid} 2>/dev/null; then
-					kill -9 ${pid} 2>/dev/null || true
+				if process_alive ${pid}; then
+					send_signal KILL ${pid}
 					elapsed=0
-					while kill -0 ${pid} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
+					while process_alive ${pid} && [ ${elapsed} -lt ${timeout} ]; do
 						sleep 1
 						elapsed=$((elapsed + 1))
 					done
@@ -1285,7 +1293,7 @@ start_starvation_gen() {
 	local timeout=10
 	local elapsed=0
 	while [ $elapsed -lt $timeout ]; do
-		if ! kill -0 ${STARVE_PID} 2>/dev/null; then
+		if ! process_alive ${STARVE_PID}; then
 			echo -e "${RED}ERROR: starvation_gen exited prematurely${NC}"
 			echo "  Log contents:"
 			cat "${STARVE_LOG}"
@@ -1302,10 +1310,10 @@ start_starvation_gen() {
 	echo -e "${RED}ERROR: starvation_gen did not become ready within ${timeout}s${NC}"
 	echo "  Log contents:"
 	cat "${STARVE_LOG}"
-	kill ${STARVE_PID} 2>/dev/null
+	send_signal TERM ${STARVE_PID}
 	sleep 1
-	if kill -0 ${STARVE_PID} 2>/dev/null; then
-		kill -9 ${STARVE_PID} 2>/dev/null
+	if process_alive ${STARVE_PID}; then
+		send_signal KILL ${STARVE_PID}
 	fi
 	return 1
 }
@@ -1315,7 +1323,7 @@ export -f start_test end_test test_section cleanup_scenario find_starved_child
 export -f assert_starvation_detected assert_boost_detected assert_stalld_rejects assert_log_contains assert_success
 export -f pass fail assert_equals assert_contains assert_not_contains
 export -f assert_file_exists assert_file_not_exists
-export -f assert_process_running assert_process_not_running
+export -f process_alive send_signal assert_process_running assert_process_not_running
 export -f start_stalld stop_stalld kill_existing_stalld cleanup
 export -f wait_for_log_message wait_for_stalld_ready wait_for_starvation_detected wait_for_boost_detected wait_for_n_log_matches
 export -f get_thread_policy get_thread_priority

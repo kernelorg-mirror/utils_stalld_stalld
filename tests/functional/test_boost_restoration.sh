@@ -183,7 +183,7 @@ if wait_for_boost_detected "${STALLD_LOG}"; then
     sleep 1
 
     # Verify stalld is still running and didn't crash after task exit
-    assert_success "stalld handled task exit during boost gracefully" kill -0 ${STALLD_PID}
+    assert_success "stalld handled task exit during boost gracefully" process_alive ${STALLD_PID}
 
 else
     log "⚠ WARNING: No boost detected in this test run"

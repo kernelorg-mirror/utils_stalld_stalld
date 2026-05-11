@@ -164,7 +164,7 @@ assert_log_contains --negate "${STALLD_LOG}" \
     "${BUSY_PID}.*starved" \
     "No false positive - progress-making task not reported as starved"
 
-kill ${BUSY_PID} 2>/dev/null
+send_signal TERM ${BUSY_PID}
 wait ${BUSY_PID} 2>/dev/null
 
 stop_stalld

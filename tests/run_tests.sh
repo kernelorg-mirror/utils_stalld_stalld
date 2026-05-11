@@ -224,7 +224,7 @@ cleanup_runner() {
 		if [ -n "${pids}" ]; then
 			echo -e "${BLUE}Cleaning up remaining stalld processes: ${pids}${NC}"
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 		fi
 
@@ -250,14 +250,14 @@ kill_existing_stalld_processes() {
 	if [ -n "${pids}" ]; then
 		echo -e "${BLUE}Killing existing stalld processes: ${pids}${NC}" | tee -a "${LOG_FILE}"
 		for pid in ${pids}; do
-			kill ${pid} 2>/dev/null || true
+			send_signal TERM ${pid}
 		done
 		sleep 0.5
 		# Force kill any remaining
 		pids=$(pgrep -x stalld 2>/dev/null)
 		if [ -n "${pids}" ]; then
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 			sleep 0.2
 		fi
