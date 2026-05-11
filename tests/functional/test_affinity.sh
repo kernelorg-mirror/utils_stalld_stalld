@@ -54,8 +54,8 @@ fi
 #=============================================================================
 test_section "Test 1: Default behavior (no affinity restriction)"
 
-start_stalld -f -v -l -t 5
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5
 
 default_affinity=$(check_affinity "${STALLD_PID}")
 log "ℹ INFO: Default affinity: $default_affinity"
@@ -69,8 +69,8 @@ stop_stalld
 #=============================================================================
 test_section "Test 2: Single CPU affinity (-a 0)"
 
-start_stalld -f -v -l -t 5 -a 0
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0
 
 affinity=$(check_affinity "${STALLD_PID}")
 
@@ -84,8 +84,8 @@ stop_stalld
 test_section "Test 3: Multi-CPU affinity (-a 0,2)"
 
 if [ "$num_cpus" -ge 4 ]; then
-    start_stalld -f -v -l -t 5 -a 0,2
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0,2
 
     affinity=$(check_affinity "${STALLD_PID}")
 
@@ -103,8 +103,8 @@ fi
 test_section "Test 4: CPU range affinity (-a 0-2)"
 
 if [ "$num_cpus" -ge 4 ]; then
-    start_stalld -f -v -l -t 5 -a 0-2
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0-2
 
     affinity=$(check_affinity "${STALLD_PID}")
 
@@ -123,8 +123,8 @@ test_section "Test 5: Verify stalld threads run on specified CPU"
 
 if [ "$num_cpus" -ge 2 ]; then
     test_cpu=1
-    start_stalld -f -v -l -t 5 -a "$test_cpu"
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a "$test_cpu"
 
     # Check affinity
     affinity=$(check_affinity "${STALLD_PID}")
@@ -174,8 +174,8 @@ assert_stalld_rejects "Invalid CPU affinity rejected with error" -f -v -l -t 5 -
 #=============================================================================
 test_section "Test 8: Verify affinity persists over time"
 
-start_stalld -f -v -l -t 5 -a 0
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0
 
 affinity_start=$(check_affinity "${STALLD_PID}")
 log "ℹ INFO: Initial affinity: $affinity_start"
