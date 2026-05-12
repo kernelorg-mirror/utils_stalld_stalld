@@ -28,7 +28,7 @@ log "Starting stalld with ${threshold}s threshold (log-only, verbose)"
 start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -l -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU}
 
 # Create long starvation to span multiple monitoring cycles
-starvation_duration=18
+starvation_duration=12
 log "Creating starvation for ${starvation_duration}s (multiple detection cycles)"
 start_starvation_gen -c ${TEST_CPU} -p 80 -n 2 -d ${starvation_duration}
 
@@ -51,7 +51,7 @@ fi
 
 # Wait for second detection cycle
 log "Waiting for second detection cycle..."
-sleep 4
+wait_for_n_log_matches "starved" 2 "${STALLD_LOG}"
 
 # Extract second starvation duration
 second_duration=$(grep "starved.*for [0-9]" "${STALLD_LOG}" | tail -1 | grep -oE "for [0-9]+" | awk '{print $2}')
@@ -72,7 +72,7 @@ fi
 
 # Wait for third detection to confirm continued accumulation
 log "Waiting for third detection cycle..."
-sleep 4
+wait_for_n_log_matches "starved" 3 "${STALLD_LOG}"
 
 third_duration=$(grep "starved.*for [0-9]" "${STALLD_LOG}" | tail -1 | grep -oE "for [0-9]+" | awk '{print $2}')
 if [ -z "${third_duration}" ]; then
@@ -182,8 +182,7 @@ else
     STARVE_PID1=${STARVE_PID}
 
     # Wait for starvation detection on both CPUs
-    wait_for_starvation_detected "${STALLD_LOG}"
-    sleep 4
+    wait_for_n_log_matches "starved" 2 "${STALLD_LOG}" 10
 
     # Check CPU0 starvation accumulation
     cpu0_detections=$(grep "starved on CPU ${CPU0}" "${STALLD_LOG}" | wc -l)

@@ -60,14 +60,11 @@ start_starvation_gen -c "${TEST_CPU}" -p 80 -n 2 -d ${starvation_duration}
 log "Starting stalld with ${threshold}s threshold"
 start_stalld_with_log "${STALLD_LOG}" -f -v -N -M -g 1 -c "${TEST_CPU}" -a "${STALLD_CPU}" -t ${threshold}
 
-# Wait for starvation duration + small buffer
-sleep 8
-
 # Wait for starvation generator to fully complete
 wait "${STARVE_PID}" 2>/dev/null || true
 
 # Give stalld time to process and log (if it were to detect)
-sleep 2
+sleep 1
 
 # Check that starvation_gen was NOT detected (duration less than threshold)
 assert_log_contains --negate "${STALLD_LOG}" \

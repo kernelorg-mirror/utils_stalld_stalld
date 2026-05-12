@@ -30,7 +30,7 @@ log "Starting stalld with ${threshold}s threshold (default DEADLINE boosting)"
 start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU}
 
 # Create starvation
-starvation_duration=$((threshold + 8))
+starvation_duration=$((threshold + 5))
 log "Creating starvation on CPU ${TEST_CPU} for ${starvation_duration}s"
 start_starvation_gen -c ${TEST_CPU} -p 80 -n 2 -d ${starvation_duration}
 

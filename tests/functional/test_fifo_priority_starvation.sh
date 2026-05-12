@@ -73,7 +73,8 @@ log "Starting stalld with boosting enabled"
 start_stalld_with_log "${STALLD_LOG}" -f -v -N -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU} -d ${boost_duration}
 
 # Wait for detection and boosting
-sleep $((threshold + boost_duration + 1))
+wait_for_boost_detected "${STALLD_LOG}"
+sleep ${boost_duration}
 
 ctxt_after=0
 if [ -n "${blockee_pid}" ] && [ -f "/proc/${blockee_pid}/status" ]; then
@@ -104,7 +105,7 @@ rm -f "${STALLD_LOG}"
 threshold=3
 
 # Create long starvation to trigger multiple detection cycles
-starvation_duration=15
+starvation_duration=12
 log "Creating long FIFO-on-FIFO starvation for ${starvation_duration}s"
 start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d ${starvation_duration}
 

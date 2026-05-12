@@ -60,7 +60,7 @@ threshold=3
 log "Starting stalld with idle detection on an idle CPU"
 start_stalld_with_log "${STALLD_LOG}" -f -v -l -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU}
 
-sleep 3
+wait_for_log_message "skipping" 5 "${STALLD_LOG}"
 
 assert_log_contains "${STALLD_LOG}" "skipping" "Idle CPU correctly skipped"
 

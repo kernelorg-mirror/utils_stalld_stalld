@@ -23,7 +23,7 @@ test_section "Test 1: FIFO Boost with -F Flag"
 
 threshold=5
 # Create starvation FIRST (before stalld starts)
-starvation_duration=$((threshold + 8))
+starvation_duration=$((threshold + 5))
 log "Creating starvation on CPU ${TEST_CPU} for ${starvation_duration}s"
 start_starvation_gen -c ${TEST_CPU} -p 80 -n 2 -d ${starvation_duration}
 

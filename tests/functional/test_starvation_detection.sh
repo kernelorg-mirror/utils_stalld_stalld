@@ -184,7 +184,8 @@ log "Creating short-lived starvation (3s, less than ${threshold}s threshold)"
 start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 3
 
 # Wait for task to exit
-sleep 5
+wait "${STARVE_PID}" 2>/dev/null || true
+sleep 1
 
 assert_process_running "${STALLD_PID}" "stalld still running after task exit"
 
