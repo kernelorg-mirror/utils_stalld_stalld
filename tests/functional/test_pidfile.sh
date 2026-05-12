@@ -22,9 +22,6 @@ test_section "Test 1: Default behavior (no -P specified)"
 
 start_stalld -l -t 5
 
-# Give stalld time to create pidfile
-sleep 2
-
 # Check common default pidfile locations
 default_found=0
 for pidfile in /var/run/stalld.pid /run/stalld.pid; do
@@ -58,7 +55,6 @@ rm -f "${custom_pidfile}"
 
 log "Starting stalld with custom pidfile: ${custom_pidfile}"
 start_stalld -l -t 5 --pidfile "${custom_pidfile}"
-sleep 2
 
 assert_file_exists "${custom_pidfile}" "Custom pidfile created at ${custom_pidfile}"
 
@@ -87,7 +83,6 @@ rm -f "${tmp_pidfile}"
 
 log "Starting stalld with /tmp pidfile: ${tmp_pidfile}"
 start_stalld -l -t 5 --pidfile "${tmp_pidfile}"
-sleep 2
 
 assert_file_exists "${tmp_pidfile}" "Pidfile created in /tmp directory"
 
@@ -107,7 +102,6 @@ rm -f "${fg_pidfile}"
 
 log "Starting stalld in foreground mode with pidfile: ${fg_pidfile}"
 start_stalld -f -v -l -t 5 --pidfile "${fg_pidfile}"
-sleep 2
 
 if [ -f "${fg_pidfile}" ]; then
     pass "Pidfile created in foreground mode"
@@ -139,7 +133,6 @@ rm -f "${readable_pidfile}"
 
 log "Starting stalld with readable pidfile: ${readable_pidfile}"
 start_stalld -l -t 5 --pidfile "${readable_pidfile}"
-sleep 2
 
 assert_file_exists "${readable_pidfile}" "Pidfile created"
 assert_success "Pidfile is readable" cat "${readable_pidfile}"
