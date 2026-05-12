@@ -49,7 +49,6 @@ if command -v dmesg >/dev/null 2>&1; then
 	DMESG_BEFORE=$(dmesg | wc -l)
 
 	start_stalld -f -k -l -t 5
-	sleep 2
 
 	if assert_process_running "${STALLD_PID}" "stalld with -k should be running"; then
 		sleep 1

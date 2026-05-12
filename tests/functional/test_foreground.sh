@@ -24,7 +24,6 @@ require_root
 # Test 1: Without -f flag, stalld should daemonize
 test_section "Test 1: stalld daemonizes by default"
 start_stalld -l -t 5
-sleep 2
 
 assert_process_running "${STALLD_PID}" "stalld should be running"
 
@@ -42,7 +41,6 @@ test_section "Test 2: stalld stays in foreground with -f"
 
 # Start stalld in foreground but in background job
 start_stalld -f -l -t 5
-sleep 2
 
 assert_process_running "${STALLD_PID}" "stalld should be running with -f"
 
@@ -55,7 +53,6 @@ stop_stalld
 test_section "Test 3: -v implies foreground mode"
 
 start_stalld -v -l -t 5
-sleep 2
 
 assert_process_running "${STALLD_PID}" "stalld should be running with -v"
 
