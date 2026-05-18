@@ -1,0 +1,55 @@
+Subject: [ANNOUNCE] stalld v1.27.1 released
+
+Hi all,
+
+I'm pleased to announce the release of stalld v1.27.1, now available
+at kernel.org, GitLab, and GitHub.
+
+Overview
+
+This release includes two behavior changes to improve usability and
+error handling, along with extensive test infrastructure improvements.
+
+Behavior Changes
+
+Syslog Logging Now Opt-In (Wander Lairson Costa)
+- Syslog output is now disabled by default
+- Use -s/--log_syslog to enable syslog logging
+- systemd service file updated to preserve existing behavior
+- Prevents unwanted syslog traffic when using verbose mode
+
+Exit on Invalid CPU Affinity (Wander Lairson Costa)
+- stalld now exits with an error on invalid -a/--affinity arguments
+- Previously invalid affinity settings were silently ignored
+
+Test Infrastructure (33 commits)
+
+- Added event-driven helpers replacing fixed sleep delays
+- New pass()/fail() functions for consistent reporting
+- Improved test reliability and maintainability
+- Fixed various test bugs and path issues
+
+Upgrade Notes
+
+If you run stalld manually (not via systemd) and rely on syslog
+logging, add the -s flag to your command line. The systemd service
+file already includes this flag.
+
+Download
+
+- https://git.kernel.org/pub/scm/utils/stalld/stalld.git
+- https://gitlab.com/rt-linux-tools/stalld
+- https://github.com/clrkwllms/stalld
+
+git tag: v1.27.1
+
+Contributors
+
+- Wander Lairson Costa
+- Clark Williams
+
+Full release notes: doc/RELEASE_NOTES_v1.27.1.md
+
+Best regards,
+Clark Williams
+

@@ -20,3 +20,4 @@ tests/legacy/test01
 *.patch
 .serena
 CLAUDE.md
+*.mbox
