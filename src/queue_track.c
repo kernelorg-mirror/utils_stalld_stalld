@@ -65,10 +65,11 @@ static int bump_memlock_rlimit(void)
 	return setrlimit(RLIMIT_MEMLOCK, &rlim_new);
 }
 
-static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
+static void print_queued_tasks(int cpu)
 {
-	struct queued_task *task;
-	int is_current;
+	struct task_map_key key, next_key;
+	struct queued_task task;
+	int fd;
 
 	if (!DEBUG_STALLD)
 		return;
@@ -76,10 +77,22 @@ static void print_queued_tasks(struct stalld_cpu_data *stalld_data, int cpu)
 	if (!config_verbose)
 		return;
 
-	for_each_queued_task(stalld_data, task) {
-		is_current = (stalld_data->current == task->pid);
-		log_msg("cpu: %-3d pid: %-8d ctx: %-8lu %s\n", cpu,
-			task->pid, task->ctxswc, is_current ? "R" : "");
+	fd = bpf_map__fd(stalld_obj->maps.stalld_task_map);
+
+	memset(&key, 0, sizeof(key));
+	memset(&next_key, 0, sizeof(next_key));
+
+	while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
+		key = next_key;
+
+		if (key.cpu != cpu)
+			continue;
+
+		if (bpf_map_lookup_elem(fd, &key, &task) != 0)
+			continue;
+
+		log_msg("cpu: %-3d pid: %-8ld ctx: %-8lu\n", cpu,
+			task.pid, task.ctxswc);
 	}
 }
 
@@ -94,7 +107,7 @@ static int get_cpu_data(struct stalld_cpu_data *stalld_cpu_data, int cpu)
 		return ENODATA;
 	}
 
-	print_queued_tasks(stalld_cpu_data, cpu);
+	print_queued_tasks(cpu);
 
 	return 0;
 }
@@ -131,9 +144,6 @@ static int queue_track_get_cpu(char *buffer, int size, int cpu)
 	if (retval)
 		return 0;
 
-	/*
-	 * Make it compatible with ->get that returned the buffer size.
-	 */
 	return sizeof(struct stalld_cpu_data);
 }
 
@@ -144,35 +154,46 @@ static int queue_track_parse(struct cpu_info *cpu_info, char *buffer, size_t buf
 	int nr_old_tasks = cpu_info->nr_waiting_tasks;
 	long nr_running = 0, nr_rt_running = 0;
 	struct task_info *tasks, *task;
-	struct queued_task *qtask;
+	struct task_map_key key, next_key;
+	struct queued_task qtask;
 	int retval = 0;
+	int fd;
 
 	tasks = allocate_memory(MAX_QUEUE_TASK, sizeof(struct task_info));
 
-	for_each_queued_task(cpu_data, qtask) {
-		if (qtask->is_rt)
+	fd = bpf_map__fd(stalld_obj->maps.stalld_task_map);
+
+	memset(&key, 0, sizeof(key));
+	memset(&next_key, 0, sizeof(next_key));
+
+	while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
+		key = next_key;
+
+		if (key.cpu != cpu_info->id)
+			continue;
+
+		if (bpf_map_lookup_elem(fd, &key, &qtask) != 0)
+			continue;
+
+		if (qtask.is_rt)
 			nr_rt_running++;
 
-		/*
-		 * Current task is not starving.
-		 */
-		if (qtask->pid == cpu_data->current)
+		if (qtask.pid == cpu_data->current)
 			continue;
+
+		if (nr_running >= MAX_QUEUE_TASK)
+			break;
 
 		task = &tasks[nr_running];
 
-		/*
-		 * if we cannot get the process name, the process died.
-		 * RIP process, a loop of silence.
-		 */
-		retval = fill_process_comm(qtask->tgid, qtask->pid, task->comm, COMM_SIZE);
+		retval = fill_process_comm(qtask.tgid, qtask.pid, task->comm, COMM_SIZE);
 		if (retval)
 			continue;
 
-		task->pid = qtask->pid;
-		task->tgid = qtask->tgid;
+		task->pid = qtask.pid;
+		task->tgid = qtask.tgid;
 
-		task->ctxsw = qtask->ctxswc;
+		task->ctxsw = qtask.ctxswc;
 
 		task->since = time(NULL);
 
@@ -205,10 +226,6 @@ static int queue_track_has_starving_task(struct cpu_info *cpu)
 /**
  * initialize_maps - Initialize BPF per-CPU data maps
  *
- * This function initializes the BPF maps used for per-CPU monitoring data.
- * It retrieves existing CPU data from the BPF map, enables monitoring for
- * configured CPUs, and updates the map with the new monitoring state.
- *
  * Returns: 0 on success, -1 on error
  */
 static int initialize_maps(void)
@@ -226,17 +243,12 @@ static int initialize_maps(void)
 		set_cpu_data(&stalld_data, i);
 	}
 
-	/* it is static */
 	config_buffer_size = sizeof(struct stalld_cpu_data);
 	return 0;
 }
 
 /**
  * run_task_iterator - Execute the BPF task iterator
- *
- * This function creates and runs the BPF task iterator program to walk
- * through all tasks in the system. The iterator provides a snapshot view
- * of all tasks, complementing the event-driven tracepoint monitoring.
  *
  * Returns: 0 on success, negative value on error
  */
@@ -266,10 +278,8 @@ static int run_task_iterator(void)
 		return iter_fd;
 	}
 
-	/* Run the iterator - this will trigger iteration through all tasks */
 	while ((len = read(iter_fd, buf, sizeof(buf))) > 0) {
 		/* Iterator output is processed by the BPF program itself */
-		/* The actual task tracking happens in the BPF program */
 	}
 
 	if (len < 0)
@@ -284,10 +294,6 @@ static int run_task_iterator(void)
 
 /**
  * load_ebpf_context - sets up ebpf context
- *
- * Set up the basics for the ebpf program to run, raising
- * memlock limit, loading and attaching the eBPF code, set
- * up the perf buffer and return the ebpf object.
  */
 static int load_ebpf_context(void)
 {
@@ -315,6 +321,12 @@ static int load_ebpf_context(void)
 		log_msg("adjusted stalld map to %d cpus\n", config_nr_cpus);
 	}
 
+	err = bpf_map__set_max_entries(stalld_obj->maps.stalld_task_map,
+				       MAX_QUEUE_TASK * config_nr_cpus);
+	if (err) {
+		warn("failed to resize BPF task map: %d\n", err);
+		goto cleanup;
+	}
 
 	err = stalld_bpf__load(stalld_obj);
 	if (err) {
@@ -358,7 +370,6 @@ static void queue_track_destroy(void)
 	int retval, i;
 
 	for (i = 0; i < config_nr_cpus; i++) {
-		/* Init data */
 		retval = get_cpu_data(&stalld_data, i);
 		if (retval)
 			continue;
