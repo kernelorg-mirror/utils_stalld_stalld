@@ -11,6 +11,7 @@
 
 #include <regex.h>
 #include <sched.h>
+#include <stdatomic.h>
 
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
@@ -68,7 +69,7 @@ struct cpu_info {
        int nr_rt_running;
        int ctxsw;
        int nr_waiting_tasks;
-       int thread_running;
+       _Atomic int thread_running;
        long idle_time;
        struct task_info *starving;
        pthread_t thread;
