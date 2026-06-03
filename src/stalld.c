@@ -908,7 +908,11 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 			if (check_might_starve_tasks(cpu)) {
 				cpus[i].id = i;
 				cpus[i].thread_running = 1;
-				pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]);
+				retval = pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]);
+				if (retval) {
+					cpus[i].thread_running = 0;
+					warn("%s: pthread_create() failed: %d\n", __func__, retval);
+				}
 			}
 		}
 
