@@ -1226,10 +1226,11 @@ int parse_args(int argc, char **argv)
  * @param buf_size The size of the mount_path_buf.
  * @return 0 on success (debugfs mount point found), -1 if not found or on error.
  */
-static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size) {
+static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size)
+{
 	FILE *fp;
 	struct mntent *mnt;
-	int ret = 0;
+	int ret = -1;
 
 	fp = setmntent("/proc/mounts", "r");
 	if (!fp) {
@@ -1244,9 +1245,9 @@ static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size) {
 		if (strlen(mnt->mnt_dir) < buf_size) {
 			strncpy(mount_path_buf, mnt->mnt_dir, buf_size - 1);
 			mount_path_buf[buf_size - 1] = '\0';
+			ret = 0;
 		} else {
 			warn("Buffer too small for debugfs mount path: %s\n", mnt->mnt_dir);
-			ret = -1;
 		}
 
 		break;
