@@ -825,7 +825,7 @@ static int should_skip_idle_cpus(struct cpu_info *cpus, int nr_cpus, char *busy_
 
 void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 {
-	int i;
+	int i, j, ret;
 
 	for (i = 0; i < nr_cpus; i++) {
 		if (!should_monitor(i))
@@ -833,14 +833,19 @@ void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 
 		cpus[i].id = i;
 		cpus[i].thread_running = 1;
-		pthread_create(&cpus[i].thread, NULL, cpu_main, &cpus[i]);
+		ret = pthread_create(&cpus[i].thread, NULL, cpu_main, &cpus[i]);
+		if (ret) {
+			cpus[i].thread_running = 0;
+			warn("%s: pthread_create() failed: %d\n", __func__, ret);
+			break;
+		}
 	}
 
-	for (i = 0; i < nr_cpus; i++) {
-		if (!should_monitor(i))
+	for (j = 0; j < i; j++) {
+		if (!should_monitor(j))
 			continue;
 
-		join_thread(&cpus[i].thread);
+		join_thread(&cpus[j].thread);
 	}
 }
 
