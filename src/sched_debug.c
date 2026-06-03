@@ -50,7 +50,8 @@ static int sched_debug_get(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
-	buffer[position-1] = '\0';
+	if (position > 0)
+		buffer[position-1] = '\0';
 
 	if (position + 100 > config_buffer_size) {
 		config_buffer_size = config_buffer_size * 2;
