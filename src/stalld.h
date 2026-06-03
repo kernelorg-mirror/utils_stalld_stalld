@@ -204,7 +204,7 @@ int rt_throttling_is_off(void);
 int turn_off_rt_throttling(void);
 void cleanup_regex(unsigned int *nr_task, regex_t **compiled_expr);
 void find_sched_debug_path(void);
-int set_reservation(int period, int reservation);
+int set_reservation(unsigned int period, unsigned int reservation);
 int get_tgid(int pid);
 void merge_tasks_info(int cpu, struct task_info *old_tasks, int nr_old, struct task_info *new_tasks, int nr_new);
 int set_cpu_affinity(char *cpu_list);

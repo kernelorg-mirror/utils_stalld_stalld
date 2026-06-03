@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <sys/sysinfo.h>
 #include <mntent.h>
+#include <inttypes.h>
 
 #include "stalld.h"
 #include "sched_debug.h"
@@ -702,9 +703,9 @@ void write_pidfile(void)
  * picture, as at the end, the task will receive the % of time, while
  * avoiding have yet another knob to handle.
  */
-int set_reservation(int period, int reservation)
+int set_reservation(unsigned int period, unsigned int reservation)
 {
-	unsigned long dl_period, dl_runtime;
+	uint64_t dl_period, dl_runtime;
 	struct sched_attr attr;
 	int flags = 0;
 	int ret;
@@ -715,8 +716,8 @@ int set_reservation(int period, int reservation)
 	if (period > 4)
 		period = 1;
 
-	dl_period = period * 1000 * 1000 * 1000;
-	dl_runtime = dl_period * reservation / 100;
+	dl_period = period * 1000ULL * 1000ULL * 1000ULL;
+	dl_runtime = dl_period * reservation / 100ULL;
 
 	memset(&attr, 0, sizeof(attr));
 	attr.size = sizeof(attr);
@@ -731,7 +732,7 @@ int set_reservation(int period, int reservation)
 		return ret;
 	}
 
-	log_msg("successfully set %d%% SCHED_DEADLINE reservation runtime/period = %lld/%lld\n",
+	log_msg("successfully set %d%% SCHED_DEADLINE reservation runtime/period = %"PRIu64"/%"PRIu64"\n",
 		reservation, dl_runtime, dl_period);
 	return 0;
 }
