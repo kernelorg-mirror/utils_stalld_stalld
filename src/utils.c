@@ -1376,7 +1376,8 @@ int read_proc_stat(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
-	buffer[position-1] = '\0';
+	if (position > 0)
+		buffer[position-1] = '\0';
 
 	close(fd);
 
