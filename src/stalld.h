@@ -243,7 +243,7 @@ extern regex_t *compiled_regex_thread;
 extern regex_t *compiled_regex_process;
 extern char *config_sched_debug_path;
 extern int config_reservation;
-extern size_t config_buffer_size;
+extern _Atomic size_t config_buffer_size;
 extern long page_size;
 extern struct stalld_backend *backend;
 extern char *config_affinity_cpus;

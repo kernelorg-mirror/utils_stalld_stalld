@@ -94,7 +94,7 @@ long page_size;
  * in detect_task_format. May change over time as the
  * system gets loaded
  */
-size_t config_buffer_size;
+_Atomic size_t config_buffer_size;
 
 /*
  * Boolean for if running under systemd.
