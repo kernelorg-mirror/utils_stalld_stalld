@@ -169,7 +169,6 @@ long get_variable_long_value(char *buffer, const char *variable)
  */
 static void inthandler(int signo, siginfo_t *info, void *extra)
 {
-	log_msg("received signal %d, starting shutdown\n", signo);
 	running = 0;
 }
 

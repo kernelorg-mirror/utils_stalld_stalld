@@ -109,7 +109,7 @@ int boost_policy;
 /*
  * Variable to indicate if stalld is running or shutting down.
  */
-int running = 1;
+volatile sig_atomic_t running = 1;
 
 /*
  * Config single threaded: uses less CPU, but has a lower precision.
@@ -1246,6 +1246,8 @@ int main(int argc, char **argv)
 		conservative_main(cpus, config_nr_cpus);
 	else
 		single_threaded_main(cpus, config_nr_cpus);
+
+	log_msg("stalld shutting down\n");
 
 	cleanup_regex(&nr_thread_ignore, &compiled_regex_thread);
 	cleanup_regex(&nr_process_ignore, &compiled_regex_process);

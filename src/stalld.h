@@ -12,6 +12,7 @@
 #include <regex.h>
 #include <sched.h>
 #include <stdatomic.h>
+#include <signal.h>
 
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
@@ -213,7 +214,7 @@ int check_dl_server_dir_exists(void);
 /*
  * Shared variables.
  */
-extern int running;
+extern volatile sig_atomic_t running;
 extern const char *version;
 extern int config_verbose;
 extern int config_write_kmesg;
