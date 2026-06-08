@@ -319,13 +319,12 @@ static int is_runnable(int pid)
 		goto out_error;
 	}
 	flock(fd, LOCK_SH);
-	retval = read(fd, &stat, sizeof(stat));
+	retval = read(fd, &stat, sizeof(stat) - sizeof(*stat));
 	if (retval < 0) {
 		warn("error reading stat for task %d\n", pid);
 		goto out_close_fd;
 	}
-	if (retval < sizeof(stat))
-		stat[retval] = '\0';
+	stat[retval] = '\0';
 
 	/*
 	 * The process state is the third white-space delimited field
