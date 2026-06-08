@@ -137,7 +137,7 @@ static int queue_track_get_cpu(char *buffer, int size, int cpu)
 		config_buffer_size = sizeof(struct stalld_cpu_data);
 		log_msg("queue_track is larger than the buffer, increasing the buffer to %zu\n",
 			config_buffer_size);
-		return 1;
+		return 0;
 	}
 
 	retval = get_cpu_data((struct stalld_cpu_data *) buffer, cpu);
