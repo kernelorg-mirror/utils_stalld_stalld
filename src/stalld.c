@@ -326,7 +326,7 @@ void print_waiting_tasks(struct cpu_info *cpu_info)
 	if (!config_verbose)
 		return;
 
-	now = time(NULL);
+	now = get_monotonic_time();
 	printf("CPU %d has %d waiting tasks\n", cpu_info->id, cpu_info->nr_waiting_tasks);
 	if (!cpu_info->nr_waiting_tasks)
 		return;
@@ -646,12 +646,12 @@ int check_starving_tasks(struct cpu_info *cpu)
 		task = &tasks[i];
 
 		/* Skip tasks that haven't been starving long enough */
-		if ((time(NULL) - task->since) < config_starving_threshold)
+		if ((get_monotonic_time() - task->since) < config_starving_threshold)
 			continue;
 
 		log_msg("%s-%d starved on CPU %d for %d seconds\n",
 			task->comm, task->pid, cpu->id,
-			(time(NULL) - task->since));
+			(get_monotonic_time() - task->since));
 
 		/*
 		 * Check if this task needs to be ignored from being boosted
@@ -659,7 +659,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 		 * getting reported as being starved.
 		 */
 		if (config_ignore && !(check_task_ignore(task))) {
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			continue;
 		}
 
@@ -670,7 +670,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 		 * after logging.
 		 */
 		if (config_log_only) {
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			continue;
 		}
 
@@ -693,11 +693,11 @@ int check_might_starve_tasks(struct cpu_info *cpu)
 	for (i = 0; i < cpu->nr_waiting_tasks; i++) {
 		task = &tasks[i];
 
-		if ((time(NULL) - task->since) >= config_starving_threshold/2) {
+		if ((get_monotonic_time() - task->since) >= config_starving_threshold/2) {
 
 			log_msg("%s-%d might starve on CPU %d (waiting for %d seconds)\n",
 				task->comm, task->pid, cpu->id,
-				(time(NULL) - task->since));
+				(get_monotonic_time() - task->since));
 
 			starving = 1;
 		}
@@ -933,7 +933,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 	int ret;
 	int i;
 
-	now = time(NULL);
+	now = get_monotonic_time();
 
 	/* Boost phase. */
 	for (i = 0; i < nr_cpus; i++) {

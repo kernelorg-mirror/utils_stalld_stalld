@@ -13,6 +13,7 @@
 #include <sched.h>
 #include <stdatomic.h>
 #include <signal.h>
+#include <time.h>
 
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
@@ -48,6 +49,13 @@
  * Daemon umask value.
  */
 #define DAEMON_UMASK  0022
+
+static inline time_t get_monotonic_time(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
 
 /*
  * Informnation about running tasks on a CPU.

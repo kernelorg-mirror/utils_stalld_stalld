@@ -478,7 +478,7 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 			task->tgid = get_tgid(task->pid);
 			task->ctxsw = ctxsw;
 			task->prio = prio;
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			/* increment the count of tasks processed */
 			tasks++;
 		}

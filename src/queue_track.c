@@ -195,7 +195,7 @@ static int queue_track_parse(struct cpu_info *cpu_info, char *buffer, size_t buf
 
 		task->ctxsw = qtask.ctxswc;
 
-		task->since = time(NULL);
+		task->since = get_monotonic_time();
 
 		nr_running++;
 
