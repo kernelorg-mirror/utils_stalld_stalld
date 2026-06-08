@@ -309,7 +309,7 @@ static int is_runnable(int pid)
 	if (pid == 0)
 		return 0;
 	retval = snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
-	if (retval < 0 || retval > sizeof(stat_path)) {
+	if (retval < 0 || retval >= sizeof(stat_path)) {
 		warn("stat path for task %d too long\n", pid);
 		goto out_error;
 	}
