@@ -233,13 +233,13 @@ static int detect_task_format(void)
 
 	/* find the delimiter for task information */
 	ptr = strstr(buffer, TASK_MARKER);
-	if (ptr == NULL) {
+	if (ptr == NULL)
 		die("unable to find 'runnable tasks' in buffer, invalid input\n");
-		exit(-1);
-	}
 
 	/* move to the column header line */
 	ptr = nextline(ptr);
+	if (!ptr)
+		die("invalid file format: %s\n", config_sched_debug_path);
 	i = 0;
 
 	/*
@@ -386,13 +386,20 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 	line = ptr;
 
 	/* skip "runnable tasks:" */
- 	line = nextline(line);
+	line = nextline(line);
+	if (!line)
+		return 0;
 
 	/* skip header lines */
 	line = nextline(line);
+	if (!line)
+		return 0;
 
 	/* skip divider line */
 	line = nextline(line);
+	if (!line)
+		return 0;
+
 	/* at this point, line should point to the start of a task line */
 
 	/* now loop over the task info
@@ -415,6 +422,8 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 			(*ptr == 'R')) {
 			/* Go to the end of the line and ignore this task. */
 			line = nextline(line);
+			if (!line)
+				return 0;
 			continue;
 		}
 
@@ -429,6 +438,8 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 		if (config_task_format == NEW_TASK_FORMAT) {
 			if (*ptr == '>' || (*ptr != 'R' && *ptr != 'X')) {
 				line = nextline(line);
+				if (!line)
+					return 0;
 				continue;
 			}
 		}
@@ -436,7 +447,7 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 		/*
 		 * At this point we have a task line to record
 		 */
-		
+
 		/* get the task field */
 		ptr = skip2word(line, config_task_format_offsets.task);
 
@@ -485,6 +496,8 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 
 		/* move our line pointer to the next availble line */
 		line = nextline(line);
+		if (!line)
+			return 0;
 	}
 	return tasks;
 }
