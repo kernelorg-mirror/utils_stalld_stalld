@@ -920,7 +920,7 @@ int set_cpu_affinity(char *cpu_list)
 
 	retval = sched_setaffinity(getpid(), sizeof(set), &set);
 	if (retval == -1) {
-		log_msg("self-affinity: error setting affinity %d", strerror(errno));
+		log_msg("self-affinity: error setting affinity: %s\n", strerror(errno));
 		return -1;
 	}
 
