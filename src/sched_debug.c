@@ -526,7 +526,6 @@ static int fill_waiting_task(char *buffer, struct cpu_info *cpu_info)
 
 	if (cpu_info == NULL) {
 		warn("NULL cpu_info pointer!\n");
-		cpu_info->starving = NULL;
 		return 0;
 	}
 
