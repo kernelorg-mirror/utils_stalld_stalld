@@ -649,7 +649,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 		if ((get_monotonic_time() - task->since) < config_starving_threshold)
 			continue;
 
-		log_msg("%s-%d starved on CPU %d for %d seconds\n",
+		log_msg("%s-%d starved on CPU %d for %ld seconds\n",
 			task->comm, task->pid, cpu->id,
 			(get_monotonic_time() - task->since));
 
@@ -695,7 +695,7 @@ int check_might_starve_tasks(struct cpu_info *cpu)
 
 		if ((get_monotonic_time() - task->since) >= config_starving_threshold/2) {
 
-			log_msg("%s-%d might starve on CPU %d (waiting for %d seconds)\n",
+			log_msg("%s-%d might starve on CPU %d (waiting for %ld seconds)\n",
 				task->comm, task->pid, cpu->id,
 				(get_monotonic_time() - task->since));
 
@@ -944,7 +944,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 		cpu = &cpu_starving_vector[i];
 
 		if (cpu->pid)
-			log_verbose("\t cpu %d: pid: %d starving for %llu\n",
+			log_verbose("\t cpu %d: pid: %d starving for %ld\n",
 				    i, cpu->pid, (now - cpu->since));
 
 		/* Skip if no task or not starving long enough */
@@ -953,7 +953,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 
 		/* Log when task has reached starvation threshold */
 		if ((now - cpu->since) >= config_starving_threshold) {
-			log_msg("%s-%d starved on CPU %d for %d seconds\n",
+			log_msg("%s-%d starved on CPU %d for %ld seconds\n",
 				cpu->task.comm, cpu->pid, i,
 				(now - cpu->since));
 		}
