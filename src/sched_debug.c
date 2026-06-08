@@ -193,22 +193,22 @@ static inline char *skip2word(char *ptr, int nwords)
  */
 static int detect_task_format(void)
 {
-	int bufincrement;
+	size_t bufincrement;
 	int retval = -1;
 	size_t bufsiz;
 	char *buffer;
-	int size = 0;
+	size_t size = 0;
 	char *ptr;
-	int status;
+	ssize_t status;
 	int fd;
 	int i, count=0;
 
 	bufsiz = bufincrement = BUFFER_PAGES * page_size;
 
-	buffer = malloc(bufsiz);
+	buffer = calloc(BUFFER_PAGES, page_size);
 
 	if (buffer == NULL)
-		die("unable to allocate %d bytes to read sched_debug");
+		die("unable to allocate %zu bytes to read sched_debug", bufsiz);
 
 	if ((fd = open(config_sched_debug_path, O_RDONLY)) < 0)
 		die("error opening sched_debug for reading: %s\n", strerror(errno));
