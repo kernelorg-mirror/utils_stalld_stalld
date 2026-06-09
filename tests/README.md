@@ -74,13 +74,11 @@ end_test
 make test
 
 # Run specific test categories
-make test-unit           # Unit tests only
 make test-functional     # Functional tests only
 make test-integration    # Integration tests only
 
 # Run test runner directly
 ./run_tests.sh
-./run_tests.sh --unit-only
 ./run_tests.sh --functional-only
 
 # Test with specific backend (applies to ALL tests)
@@ -108,15 +106,10 @@ tests/
 ├── helpers/
 │   ├── test_helpers.sh       # Common helper functions
 │   └── starvation_gen.c      # Configurable starvation generator
-├── legacy/                   # Legacy tests (wrapped)
-│   ├── README.md             # Legacy test documentation
-│   ├── test01.c              # Original starvation test (fixed, wrapped)
-│   └── test01_wrapper.sh     # Wrapper with modern infrastructure
 ├── functional/               # Functional tests (shell scripts)
 │   ├── test_foreground.sh
 │   ├── test_log_only.sh
 │   └── test_logging_destinations.sh
-├── unit/                     # Unit tests (C programs)
 ├── integration/              # Integration tests (shell scripts)
 ├── fixtures/                 # Test data and configurations
 └── results/                  # Test output logs (gitignored)
@@ -155,20 +148,6 @@ end_test
 ```
 
 **Note**: If your test directly invokes stalld (not using `start_stalld`), check `STALLD_TEST_BACKEND` and add `-b ${STALLD_TEST_BACKEND}` to the command line. See `test_log_only.sh` for an example.
-
-### Unit Test Template (C)
-
-```c
-#include <stdio.h>
-#include <assert.h>
-
-int main(void) {
-    // Your test logic
-    assert(condition);
-    printf("Test passed\n");
-    return 0;
-}
-```
 
 ### Test Exit Codes
 
@@ -249,10 +228,6 @@ Test results are stored in `results/` directory:
 
 ## Current Test Coverage
 
-### Legacy Tests (✅ Integrated)
-- [x] test01 - Original starvation test (fixed, wrapped with modern infrastructure)
-  - See `legacy/README.md` for details
-
 ### Phase 1: Foundation (✅ Complete)
 - [x] Test infrastructure created (run_tests.sh, test_helpers.sh, starvation_gen.c)
 - [x] test_foreground.sh - Foreground mode
@@ -307,8 +282,8 @@ sudo make test
 ## Contributing
 
 When adding new tests:
-1. Use the appropriate directory (unit/, functional/, integration/)
-2. Follow naming convention: `test_<feature>.sh` or `test_<feature>.c`
+1. Use the appropriate directory (functional/, integration/)
+2. Follow naming convention: `test_<feature>.sh`
 3. Include SPDX license header
 4. Use helper functions from test_helpers.sh
 5. Add cleanup for any resources created

@@ -102,7 +102,7 @@ void *blockee_thread(void *arg) {
 }
 
 void signal_handler(int sig) {
-	printf("\nReceived signal %d, exiting...\n", sig);
+	(void)sig;
 	running = 0;
 }
 

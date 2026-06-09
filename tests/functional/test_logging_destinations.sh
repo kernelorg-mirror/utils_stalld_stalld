@@ -28,39 +28,27 @@ has_stalld_log() {
 }
 
 # Test 1: Verbose mode (-v) logs to stdout/stderr
-echo "Test 1: Verbose mode (-v) logs to stdout"
+test_section "Test 1: Verbose mode (-v) logs to stdout"
 
 LOG_FILE="/tmp/stalld_test_verbose_$$.log"
 CLEANUP_FILES+=("${LOG_FILE}")
 
 start_stalld_with_log "${LOG_FILE}" -f -v -l -t 5
 
-if assert_process_running "${STALLD_PID}" "stalld should be running"; then
-	# Check that output was written to our log file
-	if [ -s "${LOG_FILE}" ]; then
-		pass "verbose mode produces output"
-
-		# Should contain initialization messages
-		if grep -q -E "(stalld|version|monitoring)" "${LOG_FILE}"; then
-			pass "output contains expected messages"
-		fi
-	else
-		fail "no output in verbose mode"
-	fi
-fi
+assert_process_running "${STALLD_PID}" "stalld should be running"
+assert_success "verbose mode produces output" test -s "${LOG_FILE}"
+assert_log_contains "${LOG_FILE}" "stalld\|version\|monitoring" "output contains expected messages"
 
 stop_stalld
 
 # Test 2: Kernel message log (-k)
-echo ""
-echo "Test 2: Kernel message log (-k)"
+test_section "Test 2: Kernel message log (-k)"
 
 # Clear dmesg if possible (requires root)
 if command -v dmesg >/dev/null 2>&1; then
 	DMESG_BEFORE=$(dmesg | wc -l)
 
 	start_stalld -f -k -l -t 5
-	sleep 2
 
 	if assert_process_running "${STALLD_PID}" "stalld with -k should be running"; then
 		sleep 1
@@ -86,8 +74,7 @@ else
 fi
 
 # Test 3: Syslog (-s, default)
-echo ""
-echo "Test 3: Syslog (-s, default)"
+test_section "Test 3: Syslog (-s, default)"
 
 # Check if syslog is available
 SYSLOG_FILE=""
@@ -144,22 +131,15 @@ else
 fi
 
 # Test 4: Combined logging (-v -k -s)
-echo ""
-echo "Test 4: Combined logging modes"
+test_section "Test 4: Combined logging modes"
 
 LOG_FILE="/tmp/stalld_test_combined_$$.log"
 CLEANUP_FILES+=("${LOG_FILE}")
 
 start_stalld_with_log "${LOG_FILE}" -f -v -k -s -l -t 5
 
-if assert_process_running "${STALLD_PID}" "stalld with combined logging should be running"; then
-	# Verify verbose output
-	if [ -s "${LOG_FILE}" ]; then
-		pass "combined logging produces output"
-	else
-		fail "no output with combined logging"
-	fi
-fi
+assert_process_running "${STALLD_PID}" "stalld with combined logging should be running"
+assert_success "combined logging produces output" test -s "${LOG_FILE}"
 
 stop_stalld
 

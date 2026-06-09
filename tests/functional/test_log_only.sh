@@ -44,10 +44,10 @@ echo "Stalld will run on CPU ${STALLD_CPU}"
 LOG_FILE="/tmp/stalld_test_log_only_$$.log"
 CLEANUP_FILES+=("${LOG_FILE}")
 
-echo "Creating starvation on CPU ${TEST_CPU} (will run for 15 seconds)"
+echo "Creating starvation on CPU ${TEST_CPU} (will run for 10 seconds)"
 
 # Start starvation generator BEFORE stalld to ensure CPU is busy from the start
-start_starvation_gen -c ${TEST_CPU} -p 10 -n 1 -d 15
+start_starvation_gen -c ${TEST_CPU} -p 10 -n 1 -d 10
 STARVGEN_PID=${STARVE_PID}
 
 # Start stalld in log-only mode with verbose output to capture logs
@@ -58,32 +58,12 @@ echo "Starvation generator started (PID ${STARVGEN_PID})"
 echo "Waiting for starvation detection..."
 
 # Check if stalld detected the starvation (should log it)
-if wait_for_starvation_detected "${LOG_FILE}"; then
-	pass "stalld detected and logged starvation"
-else
-	fail "stalld did not detect starvation"
-	echo "Log contents:"
-	cat "${LOG_FILE}"
-fi
+assert_starvation_detected "${LOG_FILE}" "stalld detected and logged starvation"
 
 # Check that stalld did NOT boost (should not see "boosted" message with -l)
-if ! grep -q "boosted" "${LOG_FILE}"; then
-	pass "stalld did not boost in log-only mode"
-else
-	fail "stalld boosted despite -l flag"
-	echo "Log contents:"
-	cat "${LOG_FILE}"
-fi
+assert_log_contains --negate "${LOG_FILE}" "boosted" "stalld did not boost in log-only mode"
 
 # Cleanup
-kill ${STARVGEN_PID} 2>/dev/null
-wait ${STARVGEN_PID} 2>/dev/null
-stop_stalld
-
-echo ""
-echo "Log file contents:"
-echo "=================="
-cat "${LOG_FILE}"
-echo "=================="
+cleanup_scenario "${STARVGEN_PID}"
 
 end_test

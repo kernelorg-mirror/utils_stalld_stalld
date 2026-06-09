@@ -40,30 +40,20 @@ test_backend_flag() {
 
 	if ! wait_for_stalld_ready "${log_file}" 15; then
 		fail "stalld failed to start (${description})"
-		stop_stalld
-		return 1
 	fi
 
-	if grep -q "${expected_msg}" "${log_file}"; then
-		pass "${description}"
-	else
-		fail "Backend message not found (${description})"
-		echo "  Expected: ${expected_msg}"
-		echo "  Log contents:"
-		cat "${log_file}"
-	fi
+	assert_log_contains "${log_file}" "${expected_msg}" "${description}"
 
 	stop_stalld
 }
 
 # Test 1: sched_debug backend (full name)
-echo "Test 1: Starting stalld with sched_debug backend"
+test_section "Test 1: Starting stalld with sched_debug backend"
 test_backend_flag "sched_debug" "using sched_debug backend" \
 	"sched_debug backend selected"
 
 # Test 2: queue_track backend (if available)
-echo ""
-echo "Test 2: Check queue_track (BPF) backend"
+test_section "Test 2: Check queue_track (BPF) backend"
 if is_backend_available "queue_track"; then
 	test_backend_flag "queue_track" "using queue_track backend" \
 		"queue_track backend selected"
@@ -74,15 +64,13 @@ else
 fi
 
 # Test 3: Short name 'S' for sched_debug
-echo ""
-echo "Test 3: Testing short name 'S' for sched_debug"
+test_section "Test 3: Testing short name 'S' for sched_debug"
 test_backend_flag "S" "using sched_debug backend" \
 	"Short name 'S' works for sched_debug"
 
 # Test 4: STALLD_TEST_BACKEND environment variable
-echo ""
 if [ -n "${STALLD_TEST_BACKEND}" ]; then
-	echo "Test 4: Testing STALLD_TEST_BACKEND=${STALLD_TEST_BACKEND}"
+	test_section "Test 4: Testing STALLD_TEST_BACKEND=${STALLD_TEST_BACKEND}"
 	# Normalize short names for expected message
 	BACKEND_NORMALIZED="${STALLD_TEST_BACKEND}"
 	case "${STALLD_TEST_BACKEND}" in
@@ -93,7 +81,7 @@ if [ -n "${STALLD_TEST_BACKEND}" ]; then
 		"using ${BACKEND_NORMALIZED} backend" \
 		"STALLD_TEST_BACKEND environment variable respected"
 else
-	echo "Test 4: Skipping (STALLD_TEST_BACKEND not set)"
+	test_section "Test 4: Skipping (STALLD_TEST_BACKEND not set)"
 	TEST_PASSED=$((TEST_PASSED + 1))
 fi
 

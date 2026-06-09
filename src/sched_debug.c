@@ -50,7 +50,8 @@ static int sched_debug_get(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
-	buffer[position-1] = '\0';
+	if (position > 0)
+		buffer[position-1] = '\0';
 
 	if (position + 100 > config_buffer_size) {
 		config_buffer_size = config_buffer_size * 2;
@@ -192,22 +193,22 @@ static inline char *skip2word(char *ptr, int nwords)
  */
 static int detect_task_format(void)
 {
-	int bufincrement;
+	size_t bufincrement;
 	int retval = -1;
 	size_t bufsiz;
 	char *buffer;
-	int size = 0;
+	size_t size = 0;
 	char *ptr;
-	int status;
+	ssize_t status;
 	int fd;
 	int i, count=0;
 
 	bufsiz = bufincrement = BUFFER_PAGES * page_size;
 
-	buffer = malloc(bufsiz);
+	buffer = calloc(BUFFER_PAGES, page_size);
 
 	if (buffer == NULL)
-		die("unable to allocate %d bytes to read sched_debug");
+		die("unable to allocate %zu bytes to read sched_debug", bufsiz);
 
 	if ((fd = open(config_sched_debug_path, O_RDONLY)) < 0)
 		die("error opening sched_debug for reading: %s\n", strerror(errno));
@@ -232,13 +233,13 @@ static int detect_task_format(void)
 
 	/* find the delimiter for task information */
 	ptr = strstr(buffer, TASK_MARKER);
-	if (ptr == NULL) {
+	if (ptr == NULL)
 		die("unable to find 'runnable tasks' in buffer, invalid input\n");
-		exit(-1);
-	}
 
 	/* move to the column header line */
 	ptr = nextline(ptr);
+	if (!ptr)
+		die("invalid file format: %s\n", config_sched_debug_path);
 	i = 0;
 
 	/*
@@ -308,7 +309,7 @@ static int is_runnable(int pid)
 	if (pid == 0)
 		return 0;
 	retval = snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
-	if (retval < 0 || retval > sizeof(stat_path)) {
+	if (retval < 0 || retval >= sizeof(stat_path)) {
 		warn("stat path for task %d too long\n", pid);
 		goto out_error;
 	}
@@ -318,13 +319,12 @@ static int is_runnable(int pid)
 		goto out_error;
 	}
 	flock(fd, LOCK_SH);
-	retval = read(fd, &stat, sizeof(stat));
+	retval = read(fd, &stat, sizeof(stat) - sizeof(*stat));
 	if (retval < 0) {
 		warn("error reading stat for task %d\n", pid);
 		goto out_close_fd;
 	}
-	if (retval < sizeof(stat))
-		stat[retval] = '\0';
+	stat[retval] = '\0';
 
 	/*
 	 * The process state is the third white-space delimited field
@@ -385,13 +385,20 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 	line = ptr;
 
 	/* skip "runnable tasks:" */
- 	line = nextline(line);
+	line = nextline(line);
+	if (!line)
+		return 0;
 
 	/* skip header lines */
 	line = nextline(line);
+	if (!line)
+		return 0;
 
 	/* skip divider line */
 	line = nextline(line);
+	if (!line)
+		return 0;
+
 	/* at this point, line should point to the start of a task line */
 
 	/* now loop over the task info
@@ -414,6 +421,8 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 			(*ptr == 'R')) {
 			/* Go to the end of the line and ignore this task. */
 			line = nextline(line);
+			if (!line)
+				return 0;
 			continue;
 		}
 
@@ -428,6 +437,8 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 		if (config_task_format == NEW_TASK_FORMAT) {
 			if (*ptr == '>' || (*ptr != 'R' && *ptr != 'X')) {
 				line = nextline(line);
+				if (!line)
+					return 0;
 				continue;
 			}
 		}
@@ -435,7 +446,7 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 		/*
 		 * At this point we have a task line to record
 		 */
-		
+
 		/* get the task field */
 		ptr = skip2word(line, config_task_format_offsets.task);
 
@@ -477,13 +488,15 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 			task->tgid = get_tgid(task->pid);
 			task->ctxsw = ctxsw;
 			task->prio = prio;
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			/* increment the count of tasks processed */
 			tasks++;
 		}
 
 		/* move our line pointer to the next availble line */
 		line = nextline(line);
+		if (!line)
+			return 0;
 	}
 	return tasks;
 }
@@ -525,7 +538,6 @@ static int fill_waiting_task(char *buffer, struct cpu_info *cpu_info)
 
 	if (cpu_info == NULL) {
 		warn("NULL cpu_info pointer!\n");
-		cpu_info->starving = NULL;
 		return 0;
 	}
 

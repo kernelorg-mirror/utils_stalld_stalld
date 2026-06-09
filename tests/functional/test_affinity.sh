@@ -35,21 +35,8 @@ check_affinity() {
     fi
 }
 
-start_test "CPU Affinity Option (-a)"
+init_functional_test "CPU Affinity Option (-a)" "test_affinity"
 
-# Setup test environment
-setup_test_environment
-
-# Require root for this test
-require_root
-
-# Check RT throttling
-if ! check_rt_throttling; then
-    echo -e "${YELLOW}SKIP: RT throttling must be disabled for this test${NC}"
-    exit 77
-fi
-
-# Get number of CPUs
 num_cpus=$(nproc)
 log "System has $num_cpus CPUs"
 
@@ -58,86 +45,52 @@ if [ "$num_cpus" -lt 2 ]; then
     exit 77
 fi
 
-# Check if taskset is available
 if ! command -v taskset > /dev/null 2>&1; then
     log "⚠ WARNING: taskset not found, will use /proc fallback"
 fi
 
-# Setup paths
-STALLD_LOG="/tmp/stalld_test_affinity_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG}")
-
 #=============================================================================
 # Test 1: Default behavior (no -a specified)
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 1: Default behavior (no affinity restriction)"
-log "=========================================="
+test_section "Test 1: Default behavior (no affinity restriction)"
 
-start_stalld -f -v -l -t 5
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5
 
 default_affinity=$(check_affinity "${STALLD_PID}")
 log "ℹ INFO: Default affinity: $default_affinity"
 
-# Typically should be all CPUs
-if [ -n "$default_affinity" ]; then
-    pass "stalld has default affinity: $default_affinity"
-else
-    log "⚠ WARNING: Could not determine default affinity"
-fi
+assert_success "stalld has default affinity" test -n "$default_affinity"
 
 stop_stalld
 
 #=============================================================================
 # Test 2: Single CPU affinity
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 2: Single CPU affinity (-a 0)"
-log "=========================================="
+test_section "Test 2: Single CPU affinity (-a 0)"
 
-STALLD_LOG2="/tmp/stalld_test_affinity_test2_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG2}")
-
-start_stalld -f -v -l -t 5 -a 0
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0
 
 affinity=$(check_affinity "${STALLD_PID}")
 
-if [ "$affinity" = "0" ]; then
-    pass "stalld restricted to CPU 0"
-else
-    fail "stalld affinity ($affinity) doesn't match requested (0)"
-fi
+assert_success "stalld restricted to CPU 0" test "$affinity" = "0"
 
 stop_stalld
 
 #=============================================================================
 # Test 3: Multi-CPU affinity (CPU list)
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 3: Multi-CPU affinity (-a 0,2)"
-log "=========================================="
+test_section "Test 3: Multi-CPU affinity (-a 0,2)"
 
 if [ "$num_cpus" -ge 4 ]; then
-    STALLD_LOG3="/tmp/stalld_test_affinity_test3_$$.log"
-    CLEANUP_FILES+=("${STALLD_LOG3}")
-
-    start_stalld -f -v -l -t 5 -a 0,2
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0,2
 
     affinity=$(check_affinity "${STALLD_PID}")
 
     # Accept either "0,2" or "0-2" or "2,0" (different systems may report differently)
-    if echo "$affinity" | grep -qE '^0,2$|^0-2$|^2,0$'; then
-        pass "stalld restricted to CPUs 0,2 (affinity: $affinity)"
-    else
-        log "⚠ WARNING: stalld affinity ($affinity) may not match requested (0,2) - format may vary"
-        # Not failing as different systems may report differently
-    fi
+    assert_success "stalld restricted to CPUs 0,2" test -n "$(echo "$affinity" | grep -E '^0,2$|^0-2$|^2,0$')"
 
     stop_stalld
 else
@@ -147,26 +100,16 @@ fi
 #=============================================================================
 # Test 4: CPU range affinity
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 4: CPU range affinity (-a 0-2)"
-log "=========================================="
+test_section "Test 4: CPU range affinity (-a 0-2)"
 
 if [ "$num_cpus" -ge 4 ]; then
-    STALLD_LOG4="/tmp/stalld_test_affinity_test4_$$.log"
-    CLEANUP_FILES+=("${STALLD_LOG4}")
-
-    start_stalld -f -v -l -t 5 -a 0-2
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0-2
 
     affinity=$(check_affinity "${STALLD_PID}")
 
     # Accept various formats: "0-2", "0,1,2", etc.
-    if echo "$affinity" | grep -qE '0.*1.*2|0-2'; then
-        pass "stalld restricted to CPU range 0-2 (affinity: $affinity)"
-    else
-        log "⚠ WARNING: stalld affinity ($affinity) may not match requested (0-2) - format may vary"
-    fi
+    assert_success "stalld restricted to CPU range 0-2" test -n "$(echo "$affinity" | grep -E '0.*1.*2|0-2')"
 
     stop_stalld
 else
@@ -176,18 +119,12 @@ fi
 #=============================================================================
 # Test 5: Verify stalld actually runs on specified CPU
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 5: Verify stalld threads run on specified CPU"
-log "=========================================="
+test_section "Test 5: Verify stalld threads run on specified CPU"
 
 if [ "$num_cpus" -ge 2 ]; then
     test_cpu=1
-    STALLD_LOG5="/tmp/stalld_test_affinity_test5_$$.log"
-    CLEANUP_FILES+=("${STALLD_LOG5}")
-
-    start_stalld -f -v -l -t 5 -a "$test_cpu"
-    sleep 2
+    rm -f "${STALLD_LOG}"
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a "$test_cpu"
 
     # Check affinity
     affinity=$(check_affinity "${STALLD_PID}")
@@ -198,11 +135,7 @@ if [ "$num_cpus" -ge 2 ]; then
         log "ℹ INFO: Found $child_threads threads for stalld"
     fi
 
-    if [ "$affinity" = "$test_cpu" ]; then
-        pass "stalld process affinity set to CPU $test_cpu"
-    else
-        log "⚠ WARNING: stalld affinity ($affinity) doesn't exactly match CPU $test_cpu"
-    fi
+    assert_success "stalld process affinity set to CPU $test_cpu" test "$affinity" = "$test_cpu"
 
     stop_stalld
 else
@@ -212,33 +145,17 @@ fi
 #=============================================================================
 # Test 6: Combined with CPU monitoring (-c and -a)
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 6: Combined affinity and monitoring (-a 0 -c 1)"
-log "=========================================="
+test_section "Test 6: Combined affinity and monitoring (-a 0 -c 1)"
 
 if [ "$num_cpus" -ge 2 ]; then
-    STALLD_LOG6="/tmp/stalld_test_affinity_test6_$$.log"
-    CLEANUP_FILES+=("${STALLD_LOG6}")
+    rm -f "${STALLD_LOG}"
 
     # Run stalld on CPU 0, but monitor CPU 1
-    start_stalld -f -v -l -t 5 -a 0 -c 1
-    sleep 2
+    start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0 -c 1
 
     affinity=$(check_affinity "${STALLD_PID}")
 
-    if [ "$affinity" = "0" ]; then
-        pass "stalld affinity to CPU 0 while monitoring CPU 1"
-    else
-        log "⚠ WARNING: stalld affinity ($affinity) doesn't match requested (0)"
-    fi
-
-    # Verify it's monitoring CPU 1 by checking logs
-    if grep -q "cpu 1" "${STALLD_LOG6}" || grep -q "monitoring.*1" "${STALLD_LOG6}"; then
-        log "ℹ INFO: stalld monitoring CPU 1 as requested"
-    else
-        log "ℹ INFO: CPU 1 monitoring not explicitly confirmed in logs"
-    fi
+    assert_success "stalld affinity to CPU 0 while monitoring CPU 1" test "$affinity" = "0"
 
     stop_stalld
 else
@@ -248,43 +165,17 @@ fi
 #=============================================================================
 # Test 7: Invalid CPU affinity
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 7: Invalid CPU affinity (-a 999)"
-log "=========================================="
+test_section "Test 7: Invalid CPU affinity (-a 999)"
 
-invalid_cpu=999
-INVALID_LOG="/tmp/stalld_test_affinity_invalid_$$.log"
-CLEANUP_FILES+=("${INVALID_LOG}")
-
-# Add backend flag for consistency
-BACKEND_FLAG=""
-if [ -n "${STALLD_TEST_BACKEND}" ]; then
-    BACKEND_FLAG="-b ${STALLD_TEST_BACKEND}"
-fi
-
-timeout 5 ${TEST_ROOT}/../stalld -f -v ${BACKEND_FLAG} -l -t 5 -a ${invalid_cpu} > "${INVALID_LOG}" 2>&1
-ret=$?
-
-if [ $ret -ne 0 ] && [ $ret -ne 124 ]; then
-    pass "Invalid CPU affinity rejected with error"
-else
-    fail "stalld did not reject invalid CPU affinity"
-fi
+assert_stalld_rejects "Invalid CPU affinity rejected with error" -f -v -l -t 5 -a 999
 
 #=============================================================================
 # Test 8: Verify affinity persists
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 8: Verify affinity persists over time"
-log "=========================================="
+test_section "Test 8: Verify affinity persists over time"
 
-STALLD_LOG8="/tmp/stalld_test_affinity_test8_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG8}")
-
-start_stalld -f -v -l -t 5 -a 0
-sleep 2
+rm -f "${STALLD_LOG}"
+start_stalld_with_log "${STALLD_LOG}" -f -v -l -t 5 -a 0
 
 affinity_start=$(check_affinity "${STALLD_PID}")
 log "ℹ INFO: Initial affinity: $affinity_start"
@@ -295,15 +186,8 @@ sleep 3
 affinity_end=$(check_affinity "${STALLD_PID}")
 log "ℹ INFO: Affinity after 3s: $affinity_end"
 
-if [ "$affinity_start" = "$affinity_end" ]; then
-    pass "CPU affinity persisted over time"
-else
-    log "⚠ WARNING: CPU affinity changed (start: $affinity_start, end: $affinity_end)"
-fi
+assert_success "CPU affinity persisted over time" test "$affinity_start" = "$affinity_end"
 
 stop_stalld
-
-log ""
-log "All affinity tests completed"
 
 end_test

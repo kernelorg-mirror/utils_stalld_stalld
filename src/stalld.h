@@ -11,6 +11,9 @@
 
 #include <regex.h>
 #include <sched.h>
+#include <stdatomic.h>
+#include <signal.h>
+#include <time.h>
 
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
@@ -45,7 +48,14 @@
 /*
  * Daemon umask value.
  */
-#define DAEMON_UMASK  0644
+#define DAEMON_UMASK  0022
+
+static inline time_t get_monotonic_time(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
 
 /*
  * Informnation about running tasks on a CPU.
@@ -68,7 +78,7 @@ struct cpu_info {
        int nr_rt_running;
        int ctxsw;
        int nr_waiting_tasks;
-       int thread_running;
+       _Atomic int thread_running;
        long idle_time;
        struct task_info *starving;
        pthread_t thread;
@@ -203,7 +213,7 @@ int rt_throttling_is_off(void);
 int turn_off_rt_throttling(void);
 void cleanup_regex(unsigned int *nr_task, regex_t **compiled_expr);
 void find_sched_debug_path(void);
-int set_reservation(int period, int reservation);
+int set_reservation(unsigned int period, unsigned int reservation);
 int get_tgid(int pid);
 void merge_tasks_info(int cpu, struct task_info *old_tasks, int nr_old, struct task_info *new_tasks, int nr_new);
 int set_cpu_affinity(char *cpu_list);
@@ -212,7 +222,7 @@ int check_dl_server_dir_exists(void);
 /*
  * Shared variables.
  */
-extern int running;
+extern volatile sig_atomic_t running;
 extern const char *version;
 extern int config_verbose;
 extern int config_write_kmesg;
@@ -242,7 +252,7 @@ extern regex_t *compiled_regex_thread;
 extern regex_t *compiled_regex_process;
 extern char *config_sched_debug_path;
 extern int config_reservation;
-extern size_t config_buffer_size;
+extern _Atomic size_t config_buffer_size;
 extern long page_size;
 extern struct stalld_backend *backend;
 extern char *config_affinity_cpus;

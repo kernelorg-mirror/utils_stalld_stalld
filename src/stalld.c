@@ -94,7 +94,7 @@ long page_size;
  * in detect_task_format. May change over time as the
  * system gets loaded
  */
-size_t config_buffer_size;
+_Atomic size_t config_buffer_size;
 
 /*
  * Boolean for if running under systemd.
@@ -109,7 +109,7 @@ int boost_policy;
 /*
  * Variable to indicate if stalld is running or shutting down.
  */
-int running = 1;
+volatile sig_atomic_t running = 1;
 
 /*
  * Config single threaded: uses less CPU, but has a lower precision.
@@ -326,7 +326,7 @@ void print_waiting_tasks(struct cpu_info *cpu_info)
 	if (!config_verbose)
 		return;
 
-	now = time(NULL);
+	now = get_monotonic_time();
 	printf("CPU %d has %d waiting tasks\n", cpu_info->id, cpu_info->nr_waiting_tasks);
 	if (!cpu_info->nr_waiting_tasks)
 		return;
@@ -646,12 +646,12 @@ int check_starving_tasks(struct cpu_info *cpu)
 		task = &tasks[i];
 
 		/* Skip tasks that haven't been starving long enough */
-		if ((time(NULL) - task->since) < config_starving_threshold)
+		if ((get_monotonic_time() - task->since) < config_starving_threshold)
 			continue;
 
-		log_msg("%s-%d starved on CPU %d for %d seconds\n",
+		log_msg("%s-%d starved on CPU %d for %ld seconds\n",
 			task->comm, task->pid, cpu->id,
-			(time(NULL) - task->since));
+			(get_monotonic_time() - task->since));
 
 		/*
 		 * Check if this task needs to be ignored from being boosted
@@ -659,7 +659,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 		 * getting reported as being starved.
 		 */
 		if (config_ignore && !(check_task_ignore(task))) {
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			continue;
 		}
 
@@ -670,7 +670,7 @@ int check_starving_tasks(struct cpu_info *cpu)
 		 * after logging.
 		 */
 		if (config_log_only) {
-			task->since = time(NULL);
+			task->since = get_monotonic_time();
 			continue;
 		}
 
@@ -693,11 +693,11 @@ int check_might_starve_tasks(struct cpu_info *cpu)
 	for (i = 0; i < cpu->nr_waiting_tasks; i++) {
 		task = &tasks[i];
 
-		if ((time(NULL) - task->since) >= config_starving_threshold/2) {
+		if ((get_monotonic_time() - task->since) >= config_starving_threshold/2) {
 
-			log_msg("%s-%d might starve on CPU %d (waiting for %d seconds)\n",
+			log_msg("%s-%d might starve on CPU %d (waiting for %ld seconds)\n",
 				task->comm, task->pid, cpu->id,
-				(time(NULL) - task->since));
+				(get_monotonic_time() - task->since));
 
 			starving = 1;
 		}
@@ -825,7 +825,7 @@ static int should_skip_idle_cpus(struct cpu_info *cpus, int nr_cpus, char *busy_
 
 void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 {
-	int i;
+	int i, j, ret;
 
 	for (i = 0; i < nr_cpus; i++) {
 		if (!should_monitor(i))
@@ -833,14 +833,19 @@ void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 
 		cpus[i].id = i;
 		cpus[i].thread_running = 1;
-		pthread_create(&cpus[i].thread, NULL, cpu_main, &cpus[i]);
+		ret = pthread_create(&cpus[i].thread, NULL, cpu_main, &cpus[i]);
+		if (ret) {
+			cpus[i].thread_running = 0;
+			warn("%s: pthread_create() failed: %d\n", __func__, ret);
+			break;
+		}
 	}
 
-	for (i = 0; i < nr_cpus; i++) {
-		if (!should_monitor(i))
+	for (j = 0; j < i; j++) {
+		if (!should_monitor(j))
 			continue;
 
-		join_thread(&cpus[i].thread);
+		join_thread(&cpus[j].thread);
 	}
 }
 
@@ -903,7 +908,11 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 			if (check_might_starve_tasks(cpu)) {
 				cpus[i].id = i;
 				cpus[i].thread_running = 1;
-				pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]);
+				retval = pthread_create(&cpus[i].thread, &dettached, cpu_main, &cpus[i]);
+				if (retval) {
+					cpus[i].thread_running = 0;
+					warn("%s: pthread_create() failed: %d\n", __func__, retval);
+				}
 			}
 		}
 
@@ -924,7 +933,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 	int ret;
 	int i;
 
-	now = time(NULL);
+	now = get_monotonic_time();
 
 	/* Boost phase. */
 	for (i = 0; i < nr_cpus; i++) {
@@ -935,7 +944,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 		cpu = &cpu_starving_vector[i];
 
 		if (cpu->pid)
-			log_verbose("\t cpu %d: pid: %d starving for %llu\n",
+			log_verbose("\t cpu %d: pid: %d starving for %ld\n",
 				    i, cpu->pid, (now - cpu->since));
 
 		/* Skip if no task or not starving long enough */
@@ -944,7 +953,7 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 
 		/* Log when task has reached starvation threshold */
 		if ((now - cpu->since) >= config_starving_threshold) {
-			log_msg("%s-%d starved on CPU %d for %d seconds\n",
+			log_msg("%s-%d starved on CPU %d for %ld seconds\n",
 				cpu->task.comm, cpu->pid, i,
 				(now - cpu->since));
 		}
@@ -1237,6 +1246,8 @@ int main(int argc, char **argv)
 		conservative_main(cpus, config_nr_cpus);
 	else
 		single_threaded_main(cpus, config_nr_cpus);
+
+	log_msg("stalld shutting down\n");
 
 	cleanup_regex(&nr_thread_ignore, &compiled_regex_thread);
 	cleanup_regex(&nr_process_ignore, &compiled_regex_process);

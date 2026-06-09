@@ -18,43 +18,12 @@ source "${TEST_ROOT}/helpers/test_helpers.sh"
 # Parse command-line options
 parse_test_options "$@" || exit $?
 
-start_test "FIFO-on-FIFO Priority Starvation Detection"
-
-# Setup test environment
-setup_test_environment
-
-# Require root for this test
-require_root
-
-# Check RT throttling
-if ! check_rt_throttling; then
-    echo -e "${YELLOW}SKIP: RT throttling must be disabled for this test${NC}"
-    exit 77
-fi
-
-# Pick a CPU for testing
-TEST_CPU=$(pick_test_cpu)
-log "Using CPU ${TEST_CPU} for testing"
-
-# Pick a different CPU for stalld to run on (avoid interference)
-STALLD_CPU=0
-if [ ${TEST_CPU} -eq 0 ]; then
-    STALLD_CPU=1
-fi
-log "Stalld will run on CPU ${STALLD_CPU}"
-
-# Setup paths
-STARVE_GEN="${TEST_ROOT}/helpers/starvation_gen"
-STALLD_LOG="/tmp/stalld_test_fifo_prio_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG}")
+init_functional_test "FIFO-on-FIFO Priority Starvation Detection" "test_fifo_prio"
 
 #=============================================================================
 # Test 1: Basic FIFO-on-FIFO Starvation Detection
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 1: Basic FIFO-on-FIFO Starvation Detection"
-log "=========================================="
+test_section "Test 1: Basic FIFO-on-FIFO Starvation Detection"
 log "Testing: FIFO:10 blocker starves FIFO:5 blockee"
 
 threshold=5
@@ -71,40 +40,17 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -l -t $threshold -c ${TEST_CPU} -a $
 
 # Wait for starvation detection
 log "Waiting for starvation detection..."
-if wait_for_starvation_detected "${STALLD_LOG}"; then
-    pass "FIFO-on-FIFO starvation detected"
-
-    # Verify correct CPU is logged
-    if grep "starved on CPU ${TEST_CPU}" "${STALLD_LOG}"; then
-        pass "Correct CPU ID logged (CPU ${TEST_CPU})"
-    else
-        fail "Wrong CPU ID in log"
-    fi
-
-    # Verify duration is logged
-    if grep -E "starved on CPU ${TEST_CPU} for [0-9]+ seconds" "${STALLD_LOG}"; then
-        pass "Starvation duration logged"
-    else
-        fail "Starvation duration not logged"
-    fi
-else
-    fail "FIFO-on-FIFO starvation not detected"
-    log "Log contents:"
-    cat "${STALLD_LOG}"
-fi
+assert_starvation_detected "${STALLD_LOG}" "FIFO-on-FIFO starvation detected"
+assert_log_contains "${STALLD_LOG}" "starved on CPU ${TEST_CPU}" "Correct CPU ID logged (CPU ${TEST_CPU})"
+assert_log_contains "${STALLD_LOG}" "starved on CPU ${TEST_CPU} for [0-9]" "Starvation duration logged"
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
 # Test 2: Boosting Effectiveness
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 2: Boosting Allows Progress"
-log "=========================================="
+test_section "Test 2: Boosting Allows Progress"
 log "Verify boosting allows FIFO:5 task to make progress despite FIFO:10 blocker"
 
 rm -f "${STALLD_LOG}"
@@ -112,19 +58,10 @@ threshold=5
 boost_duration=3
 
 log "Creating FIFO-on-FIFO starvation on CPU ${TEST_CPU}"
-start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 1 -d 12
 
 # Find the starved task (blockee) PID
-STARVE_CHILDREN=$(pgrep -P ${STARVE_PID} 2>/dev/null)
-blockee_pid=""
-for child_pid in ${STARVE_CHILDREN}; do
-    if [ -f "/proc/${child_pid}/status" ]; then
-        # Check if it's the lower priority task (blockee)
-        # The blockee should have lower priority than blocker
-        blockee_pid=${child_pid}
-        break
-    fi
-done
+blockee_pid=$(find_starved_child "${STARVE_PID}")
 
 ctxt_before=0
 if [ -n "${blockee_pid}" ]; then
@@ -136,7 +73,8 @@ log "Starting stalld with boosting enabled"
 start_stalld_with_log "${STALLD_LOG}" -f -v -N -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU} -d ${boost_duration}
 
 # Wait for detection and boosting
-sleep $((threshold + boost_duration + 1))
+wait_for_boost_detected "${STALLD_LOG}"
+sleep ${boost_duration}
 
 ctxt_after=0
 if [ -n "${blockee_pid}" ] && [ -f "/proc/${blockee_pid}/status" ]; then
@@ -151,34 +89,23 @@ log "Context switch delta: ${ctxt_delta}"
 if [ ${ctxt_delta} -gt 0 ]; then
     pass "Blockee task made progress (${ctxt_delta} context switches)"
 else
-    log "⚠ WARNING: Could not verify progress (timing issue or blockee not found)"
-    # Check if boosting occurred at least
-    if grep -q "boosted" "${STALLD_LOG}"; then
-        log "ℹ INFO: Boosting did occur according to logs"
-    else
-        fail "No boosting detected"
-    fi
+    assert_log_contains "${STALLD_LOG}" "boosted" "Boosting occurred despite no measurable progress"
 fi
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
 # Test 3: Starvation Duration Tracking
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 3: Starvation Duration Tracking"
-log "=========================================="
+test_section "Test 3: Starvation Duration Tracking"
 log "Verify duration accumulates correctly (task merging)"
 
 rm -f "${STALLD_LOG}"
 threshold=3
 
 # Create long starvation to trigger multiple detection cycles
-starvation_duration=15
+starvation_duration=12
 log "Creating long FIFO-on-FIFO starvation for ${starvation_duration}s"
 start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d ${starvation_duration}
 
@@ -189,53 +116,32 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -l -t $threshold -c ${TEST_CPU} -a $
 # Wait for multiple detection cycles
 log "Waiting for first detection cycle..."
 wait_for_starvation_detected "${STALLD_LOG}"
-log "First detection cycle should have occurred"
-log "Waiting for second detection cycle..."
-wait_for_starvation_detected "${STALLD_LOG}"
-log "Second detection cycle should have occurred"
-log "Waiting for third detection cycle..."
-wait_for_starvation_detected "${STALLD_LOG}"
-log "Third detection cycle should have occurred"
+log "First detection cycle occurred, waiting for additional cycles..."
+wait_for_n_log_matches "starved on CPU" 3 "${STALLD_LOG}"
+log "Multiple detection cycles should have occurred"
 
 # Check if we see accumulating starvation time in logs
 # Task merging means the timestamp is preserved, so duration increases
-if grep -E "starved on CPU ${TEST_CPU} for [0-9]+ seconds" "${STALLD_LOG}" | wc -l | grep -q "[2-9]"; then
-    pass "Multiple starvation reports found"
+assert_success "Multiple starvation reports found" \
+    test -n "$(grep -E "starved on CPU ${TEST_CPU} for [0-9]+ seconds" "${STALLD_LOG}" | sed -n '2p')"
 
-    # Extract starvation durations from log
-    durations=$(grep -oE "starved on CPU ${TEST_CPU} for [0-9]+" "${STALLD_LOG}" | grep -oE "[0-9]+$")
-    log "Starvation durations observed: $(echo $durations | tr '\n' ' ')"
+# Extract starvation durations from log
+durations=$(grep -oE "starved on CPU ${TEST_CPU} for [0-9]+" "${STALLD_LOG}" | grep -oE "[0-9]+$")
+log "Starvation durations observed: $(echo $durations | tr '\n' ' ')"
 
-    # Verify durations are increasing (timestamp preserved = duration accumulates)
-    first_duration=$(echo "$durations" | head -1)
-    last_duration=$(echo "$durations" | tail -1)
+# Verify durations are increasing (timestamp preserved = duration accumulates)
+first_duration=$(echo "$durations" | head -1)
+last_duration=$(echo "$durations" | tail -1)
 
-    if [ ${last_duration} -gt ${first_duration} ]; then
-        pass "Starvation duration increased (${first_duration}s -> ${last_duration}s)"
-        log "        This confirms task merging preserved the timestamp"
-    else
-        fail "Starvation duration did not increase (timestamp may have been reset)"
-    fi
-else
-    log "⚠ WARNING: Not enough starvation reports to verify task merging"
-    log "        (May be due to queue_track backend limitation)"
-    if [ -n "${STALLD_TEST_BACKEND}" ] && [ "${STALLD_TEST_BACKEND}" = "queue_track" ]; then
-        log "        NOTE: queue_track backend has known issues with SCHED_FIFO detection"
-    fi
-fi
+assert_success "Starvation duration increased" test "${last_duration}" -gt "${first_duration}"
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
 # Test 4: Close Priority Gap
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 4: Close Priority Gap (FIFO:6 vs FIFO:5)"
-log "=========================================="
+test_section "Test 4: Close Priority Gap (FIFO:6 vs FIFO:5)"
 log "Testing edge case with only 1 priority difference"
 
 rm -f "${STALLD_LOG}"
@@ -263,24 +169,19 @@ else
 fi
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
 # Test 5: Correct Task Boosted
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 5: Verify Correct Task is Boosted"
-log "=========================================="
+test_section "Test 5: Verify Correct Task is Boosted"
 log "Ensure stalld boosts the blockee (FIFO:5), not the blocker (FIFO:10)"
 
 rm -f "${STALLD_LOG}"
 threshold=5
 
 log "Creating FIFO-on-FIFO starvation"
-start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d 20 -v
+start_starvation_gen -c ${TEST_CPU} -p 10 -b 5 -n 2 -d 12 -v
 
 # Extract blocker and blockee PIDs from starvation_gen output
 # The output shows "Blocker TID: <pid>" and "Blockee N TID: <pid>"
@@ -293,14 +194,6 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -N -t $threshold -c ${TEST_CPU} -a $
 log "Waiting for boost detection..."
 if wait_for_boost_detected "${STALLD_LOG}"; then
     pass "Boosting occurred"
-
-    # Try to verify the correct task was boosted
-    # stalld logs should show the blockee task name (starvation_gen thread)
-    if grep "boosted.*starvation_gen" "${STALLD_LOG}"; then
-        pass "starvation_gen task was boosted (likely the blockee)"
-    else
-        log "ℹ INFO: Could not verify specific task from logs"
-    fi
 else
     log "⚠ WARNING: No boosting detected in logs"
     log "        (May be due to queue_track backend limitation)"
@@ -310,24 +203,6 @@ else
 fi
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
-
-#=============================================================================
-# Final Summary
-#=============================================================================
-log ""
-log "=========================================="
-log "Test Summary"
-log "=========================================="
-log "Total failures: ${TEST_FAILED}"
-
-if [ -n "${STALLD_TEST_BACKEND}" ] && [ "${STALLD_TEST_BACKEND}" = "queue_track" ]; then
-    log ""
-    log "NOTE: queue_track backend has known limitations with SCHED_FIFO task detection."
-    log "      For reliable FIFO-on-FIFO testing, use the sched_debug backend:"
-    log "      ./test_fifo_priority_starvation.sh -b sched_debug"
-fi
+cleanup_scenario "${STARVE_PID}"
 
 end_test

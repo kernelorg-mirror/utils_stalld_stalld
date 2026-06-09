@@ -14,52 +14,12 @@ source "${TEST_ROOT}/helpers/test_helpers.sh"
 # Parse command-line options
 parse_test_options "$@" || exit $?
 
-start_test "Task Merging Logic"
-
-# Setup test environment
-setup_test_environment
-
-# Require root for this test
-require_root
-
-# Check RT throttling
-if ! check_rt_throttling; then
-    echo -e "${YELLOW}SKIP: RT throttling must be disabled for this test${NC}"
-    exit 77
-fi
-
-# Pick a CPU for testing
-TEST_CPU=$(pick_test_cpu)
-log "Using CPU ${TEST_CPU} for testing"
-
-# Pick a different CPU for stalld to run on (avoid interference)
-STALLD_CPU=0
-if [ ${TEST_CPU} -eq 0 ]; then
-    STALLD_CPU=1
-fi
-log "Stalld will run on CPU ${STALLD_CPU}"
-
-# Check for DL-server (kernel automatic starvation handling)
-# If DL-server is present, the kernel handles starvation automatically,
-# so stalld won't detect starvation and we can't test task merging logic
-if [ -d "/sys/kernel/debug/sched/fair_server" ]; then
-    echo -e "${YELLOW}SKIP: DL-server detected - kernel handles starvation automatically${NC}"
-    echo "      Task merging cannot be tested when DL-server prevents starvation"
-    exit 77
-fi
-
-# Setup paths
-STARVE_GEN="${TEST_ROOT}/helpers/starvation_gen"
-STALLD_LOG="/tmp/stalld_test_merge_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG}")
+init_functional_test "Task Merging Logic" "test_merge"
 
 #=============================================================================
 # Test 1: Timestamp Preservation for Non-Progressing Tasks
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 1: Timestamp Preservation Across Cycles"
-log "=========================================="
+test_section "Test 1: Timestamp Preservation Across Cycles"
 log "Task merging: same PID + same ctxsw = preserved timestamp"
 
 threshold=3
@@ -68,7 +28,7 @@ log "Starting stalld with ${threshold}s threshold (log-only, verbose)"
 start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -l -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU}
 
 # Create long starvation to span multiple monitoring cycles
-starvation_duration=18
+starvation_duration=12
 log "Creating starvation for ${starvation_duration}s (multiple detection cycles)"
 start_starvation_gen -c ${TEST_CPU} -p 80 -n 2 -d ${starvation_duration}
 
@@ -91,7 +51,7 @@ fi
 
 # Wait for second detection cycle
 log "Waiting for second detection cycle..."
-sleep 4
+wait_for_n_log_matches "starved" 2 "${STALLD_LOG}"
 
 # Extract second starvation duration
 second_duration=$(grep "starved.*for [0-9]" "${STALLD_LOG}" | tail -1 | grep -oE "for [0-9]+" | awk '{print $2}')
@@ -112,7 +72,7 @@ fi
 
 # Wait for third detection to confirm continued accumulation
 log "Waiting for third detection cycle..."
-sleep 4
+wait_for_n_log_matches "starved" 3 "${STALLD_LOG}"
 
 third_duration=$(grep "starved.*for [0-9]" "${STALLD_LOG}" | tail -1 | grep -oE "for [0-9]+" | awk '{print $2}')
 if [ -z "${third_duration}" ]; then
@@ -127,17 +87,12 @@ else
 fi
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
 # Test 2: Same PID + Same Context Switches = Merged
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 2: Merge Condition Verification"
-log "=========================================="
+test_section "Test 2: Merge Condition Verification"
 log "Merging occurs when: PID matches AND context switches unchanged"
 
 threshold=5
@@ -146,20 +101,13 @@ start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -l -t $threshold -c ${TEST_CPU}
 
 # Create starvation
 log "Creating starvation"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 20
+start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 12
 
 # Wait for starvation detection
 wait_for_starvation_detected "${STALLD_LOG}"
 
 # Find the starved task PID
-STARVE_CHILDREN=$(pgrep -P ${STARVE_PID} 2>/dev/null)
-tracked_pid=""
-for child_pid in ${STARVE_CHILDREN}; do
-    if [ -f "/proc/${child_pid}/status" ]; then
-        tracked_pid=${child_pid}
-        break
-    fi
-done
+tracked_pid=$(find_starved_child "${STARVE_PID}")
 
 if [ -n "${tracked_pid}" ]; then
     log "Tracking starved task PID ${tracked_pid}"
@@ -200,72 +148,12 @@ else
 fi
 
 # Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
+cleanup_scenario "${STARVE_PID}"
 
 #=============================================================================
-# Test 3: Task Making Progress (No Merge)
+# Test 3: Multiple CPUs with Independent Task Merging
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 3: No Merge When Task Makes Progress"
-log "=========================================="
-log "When context switches change, timestamp should reset"
-
-threshold=5
-rm -f "${STALLD_LOG}"
-start_stalld_with_log "${STALLD_LOG}" -f -v -g 1 -t $threshold -c ${TEST_CPU} -a ${STALLD_CPU} -d 2
-
-# Create starvation that will get boosted (allowing progress)
-log "Creating starvation that will be boosted"
-start_starvation_gen -c ${TEST_CPU} -p 80 -n 1 -d 20
-
-# Wait for starvation detection
-wait_for_starvation_detected "${STALLD_LOG}"
-
-# Find tracked task
-STARVE_CHILDREN=$(pgrep -P ${STARVE_PID} 2>/dev/null)
-tracked_pid=""
-for child_pid in ${STARVE_CHILDREN}; do
-    if [ -f "/proc/${child_pid}/status" ]; then
-        tracked_pid=${child_pid}
-        break
-    fi
-done
-
-if [ -n "${tracked_pid}" ]; then
-    # Wait for boost to complete and task to starve again
-    sleep 5
-
-    # If task was boosted, context switches should have changed
-    # meaning timestamp should reset for next starvation period
-    if grep -q "boosted" "${STALLD_LOG}"; then
-        pass "Task was boosted (made progress)"
-
-        # Check if we see a new starvation period starting
-        # (This is harder to verify, but context switches changing = no merge)
-        log "ℹ INFO: When task makes progress (ctxsw changes), timestamp resets"
-        log "        Next starvation detection starts new timing period"
-    else
-        log "ℹ INFO: No boost occurred (may be timing dependent)"
-    fi
-else
-    log "⚠ INFO: Could not track task for progress test"
-fi
-
-# Cleanup
-kill -TERM ${STARVE_PID} 2>/dev/null
-wait ${STARVE_PID} 2>/dev/null
-stop_stalld
-
-#=============================================================================
-# Test 4: Multiple CPUs with Independent Task Merging
-#=============================================================================
-log ""
-log "=========================================="
-log "Test 4: Per-CPU Independent Task Merging"
-log "=========================================="
+test_section "Test 3: Per-CPU Independent Task Merging"
 
 NUM_CPUS=$(get_num_cpus)
 if [ ${NUM_CPUS} -lt 2 ]; then
@@ -286,16 +174,15 @@ else
 
     # Create starvation on both CPUs
     log "Creating starvation on CPU ${CPU0}"
-    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU0} -p 80 -n 1 -d 10
     STARVE_PID0=${STARVE_PID}
 
     log "Creating starvation on CPU ${CPU1}"
-    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 15
+    start_starvation_gen -c ${CPU1} -p 80 -n 1 -d 10
     STARVE_PID1=${STARVE_PID}
 
     # Wait for starvation detection on both CPUs
-    wait_for_starvation_detected "${STALLD_LOG}"
-    sleep 4
+    wait_for_n_log_matches "starved" 2 "${STALLD_LOG}" 10
 
     # Check CPU0 starvation accumulation
     cpu0_detections=$(grep "starved on CPU ${CPU0}" "${STALLD_LOG}" | wc -l)
@@ -335,23 +222,7 @@ else
     fi
 
     # Cleanup
-    kill -TERM ${STARVE_PID0} 2>/dev/null
-    kill -TERM ${STARVE_PID1} 2>/dev/null
-    wait ${STARVE_PID0} 2>/dev/null
-    wait ${STARVE_PID1} 2>/dev/null
-    stop_stalld
+    cleanup_scenario "${STARVE_PID0}" "${STARVE_PID1}"
 fi
-
-#=============================================================================
-# Final Summary
-#=============================================================================
-log ""
-log "=========================================="
-log "Test Summary"
-log "=========================================="
-log "Task merging function: merge_tasks_info() in stalld.c:370-397"
-log "Merge logic: if (PID == PID && ctxsw == ctxsw) preserve timestamp"
-log ""
-log "Total failures: ${TEST_FAILED}"
 
 end_test

@@ -32,7 +32,6 @@ declare -A SAVED_DL_SERVER_RUNTIME
 DISABLE_DL_SERVER=1
 
 # Test categories
-declare -a UNIT_TESTS
 declare -a FUNC_TESTS
 declare -a INTEG_TESTS
 
@@ -225,7 +224,7 @@ cleanup_runner() {
 		if [ -n "${pids}" ]; then
 			echo -e "${BLUE}Cleaning up remaining stalld processes: ${pids}${NC}"
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 		fi
 
@@ -251,14 +250,14 @@ kill_existing_stalld_processes() {
 	if [ -n "${pids}" ]; then
 		echo -e "${BLUE}Killing existing stalld processes: ${pids}${NC}" | tee -a "${LOG_FILE}"
 		for pid in ${pids}; do
-			kill ${pid} 2>/dev/null || true
+			send_signal TERM ${pid}
 		done
 		sleep 0.5
 		# Force kill any remaining
 		pids=$(pgrep -x stalld 2>/dev/null)
 		if [ -n "${pids}" ]; then
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 			sleep 0.2
 		fi
@@ -350,13 +349,6 @@ should_skip_test_for_mode() {
 
 # Discover tests
 discover_tests() {
-	# Find unit tests (C executables)
-	if [ -d "${TEST_ROOT}/unit" ]; then
-		while IFS= read -r test; do
-			UNIT_TESTS+=("${test}")
-		done < <(find "${TEST_ROOT}/unit" -type f -executable -name "test_*" 2>/dev/null)
-	fi
-
 	# Find functional tests (shell scripts)
 	if [ -d "${TEST_ROOT}/functional" ]; then
 		while IFS= read -r test; do
@@ -371,122 +363,6 @@ discover_tests() {
 		done < <(find "${TEST_ROOT}/integration" -type f -name "test_*.sh" 2>/dev/null)
 	fi
 
-	# Add legacy test wrapper
-	if [ -x "${TEST_ROOT}/legacy/test01_wrapper.sh" ]; then
-		UNIT_TESTS=("${TEST_ROOT}/legacy/test01_wrapper.sh" "${UNIT_TESTS[@]}")
-	fi
-}
-
-# Run unit tests
-run_unit_tests() {
-	if [ ${#UNIT_TESTS[@]} -eq 0 ]; then
-		echo -e "${YELLOW}No unit tests found${NC}" | tee -a "${LOG_FILE}"
-		return
-	fi
-
-	echo -e "\n${BOLD}${GREEN}Running Unit Tests${NC}" | tee -a "${LOG_FILE}"
-	echo "-------------------------------------------" | tee -a "${LOG_FILE}"
-
-	if [ ${THREADING_MODE_MATRIX} -eq 1 ]; then
-		# Full matrix: Test with all backends × all threading modes
-		for backend in "${BACKENDS[@]}"; do
-			export STALLD_TEST_BACKEND="${backend}"
-			for mode in "${THREADING_MODES[@]}"; do
-				export STALLD_TEST_THREADING_MODE="${mode}"
-				for test in "${UNIT_TESTS[@]}"; do
-					if should_skip_test_for_mode "${test}" "${mode}"; then
-						continue  # Skip this test for this mode
-					fi
-					run_unit_test "${test}" "${backend}:${mode}"
-				done
-			done
-		done
-	elif [ ${BACKEND_MATRIX} -eq 1 ]; then
-		# Test with all backends
-		for backend in "${BACKENDS[@]}"; do
-			export STALLD_TEST_BACKEND="${backend}"
-			for test in "${UNIT_TESTS[@]}"; do
-				run_unit_test "${test}" "${backend}"
-			done
-		done
-	else
-		# Test with specified backend/mode or default
-		for test in "${UNIT_TESTS[@]}"; do
-			run_unit_test "${test}"
-		done
-	fi
-}
-
-run_unit_test() {
-	local test_path=$1
-	local test_name=$(basename "${test_path}")
-	local backend_mode="${2:-}"  # Optional "backend" or "backend:mode" parameter
-
-	TOTAL_TESTS=$((TOTAL_TESTS + 1))
-
-	# Parse backend and mode from parameter
-	local backend=""
-	local mode=""
-	if [ -n "${backend_mode}" ]; then
-		if [[ "${backend_mode}" == *":"* ]]; then
-			backend="${backend_mode%%:*}"
-			mode="${backend_mode##*:}"
-			MODE_TOTAL["${mode}"]=$((MODE_TOTAL["${mode}"] + 1))
-		else
-			backend="${backend_mode}"
-		fi
-		BACKEND_TOTAL["${backend}"]=$((BACKEND_TOTAL["${backend}"] + 1))
-	fi
-
-	if [ ! -x "${test_path}" ]; then
-		echo -e "${YELLOW}SKIP${NC}: ${test_name} (not executable)" | tee -a "${LOG_FILE}"
-		SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
-		if [ -n "${backend}" ]; then
-			BACKEND_SKIPPED["${backend}"]=$((BACKEND_SKIPPED["${backend}"] + 1))
-		fi
-		if [ -n "${mode}" ]; then
-			MODE_SKIPPED["${mode}"]=$((MODE_SKIPPED["${mode}"] + 1))
-		fi
-		return
-	fi
-
-	# Add backend/mode prefix to test name
-	local display_name="${test_name}"
-	if [ -n "${backend_mode}" ]; then
-		display_name="[${backend_mode}] ${test_name}"
-	fi
-
-	echo -n "Running ${display_name}... " | tee -a "${LOG_FILE}"
-
-	local test_log="${RESULTS_DIR}/${test_name}.log"
-	if [ -n "${backend_mode}" ]; then
-		# Replace : with _ for filename
-		test_log="${RESULTS_DIR}/${backend_mode//:/_}_${test_name}.log"
-	fi
-
-	local start_time=$SECONDS
-	if "${test_path}" > "${test_log}" 2>&1; then
-		local elapsed=$((SECONDS - start_time))
-		echo -e "${GREEN}PASS${NC} (${elapsed}s)" | tee -a "${LOG_FILE}"
-		PASSED_TESTS=$((PASSED_TESTS + 1))
-		if [ -n "${backend}" ]; then
-			BACKEND_PASSED["${backend}"]=$((BACKEND_PASSED["${backend}"] + 1))
-		fi
-		if [ -n "${mode}" ]; then
-			MODE_PASSED["${mode}"]=$((MODE_PASSED["${mode}"] + 1))
-		fi
-	else
-		local elapsed=$((SECONDS - start_time))
-		echo -e "${RED}FAIL${NC} (${elapsed}s)" | tee -a "${LOG_FILE}"
-		echo "  See ${test_log} for details" | tee -a "${LOG_FILE}"
-		FAILED_TESTS=$((FAILED_TESTS + 1))
-		if [ -n "${backend}" ]; then
-			BACKEND_FAILED["${backend}"]=$((BACKEND_FAILED["${backend}"] + 1))
-		fi
-		if [ -n "${mode}" ]; then
-			MODE_FAILED["${mode}"]=$((MODE_FAILED["${mode}"] + 1))
-		fi
-	fi
 }
 
 # Run functional tests
@@ -705,17 +581,12 @@ print_summary() {
 }
 
 # Parse command-line options
-UNIT_ONLY=0
 FUNCTIONAL_ONLY=0
 INTEGRATION_ONLY=0
 SPECIFIC_TEST=""  # Run specific test by name
 
 while [[ $# -gt 0 ]]; do
 	case $1 in
-		--unit-only)
-			UNIT_ONLY=1
-			shift
-			;;
 		--functional-only)
 			FUNCTIONAL_ONLY=1
 			shift
@@ -770,7 +641,6 @@ while [[ $# -gt 0 ]]; do
 			echo "Usage: $0 [OPTIONS]"
 			echo ""
 			echo "Test Selection:"
-			echo "  --unit-only          Run only unit tests"
 			echo "  --functional-only    Run only functional tests"
 			echo "  --integration-only   Run only integration tests"
 			echo "  -t, --test <name>    Run specific test by name (e.g., test_fifo_boosting)"
@@ -816,7 +686,7 @@ run_specific_test() {
 	local test_path=""
 
 	# Search for the test in all test directories
-	for dir in unit functional integration legacy; do
+	for dir in functional integration; do
 		if [ -f "${TEST_ROOT}/${dir}/${test_name}.sh" ]; then
 			test_path="${TEST_ROOT}/${dir}/${test_name}.sh"
 			found=1
@@ -830,7 +700,7 @@ run_specific_test() {
 
 	if [ ${found} -eq 0 ]; then
 		echo -e "${RED}Error: Test '${test_name}' not found${NC}"
-		echo "Searched in: unit/, functional/, integration/, legacy/"
+		echo "Searched in: functional/, integration/"
 		exit 1
 	fi
 
@@ -853,11 +723,7 @@ run_specific_test() {
 	init_tests
 
 	# Determine test type and run appropriately
-	if [[ "${test_path}" == */unit/* ]]; then
-		run_unit_test "${test_path}"
-	else
-		run_shell_test "${test_path}"
-	fi
+	run_shell_test "${test_path}"
 
 	# Print result
 	echo ""
@@ -885,15 +751,12 @@ main() {
 	# Run test suites based on options
 	if [ -n "${SPECIFIC_TEST}" ]; then
 		run_specific_test "${SPECIFIC_TEST}"
-	elif [ ${UNIT_ONLY} -eq 1 ]; then
-		run_unit_tests
 	elif [ ${FUNCTIONAL_ONLY} -eq 1 ]; then
 		run_functional_tests
 	elif [ ${INTEGRATION_ONLY} -eq 1 ]; then
 		run_integration_tests
 	else
 		# Run all tests
-		run_unit_tests
 		run_functional_tests
 		run_integration_tests
 	fi

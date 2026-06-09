@@ -1,4 +1,3 @@
-tests/test01
 tests/helpers/starvation_gen
 tests/results/
 *.tar.xz
@@ -16,8 +15,10 @@ compile_commands.json
 .cursor
 node_modules/
 patches/
-tests/legacy/test01
 *.patch
 .serena
 CLAUDE.md
 *.mbox
+.jira_cache
+.mcp.json
+.semcode.db

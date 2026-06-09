@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <sys/sysinfo.h>
 #include <mntent.h>
+#include <inttypes.h>
 
 #include "stalld.h"
 #include "sched_debug.h"
@@ -168,7 +169,6 @@ long get_variable_long_value(char *buffer, const char *variable)
  */
 static void inthandler(int signo, siginfo_t *info, void *extra)
 {
-	log_msg("received signal %d, starting shutdown\n", signo);
 	running = 0;
 }
 
@@ -702,9 +702,9 @@ void write_pidfile(void)
  * picture, as at the end, the task will receive the % of time, while
  * avoiding have yet another knob to handle.
  */
-int set_reservation(int period, int reservation)
+int set_reservation(unsigned int period, unsigned int reservation)
 {
-	unsigned long dl_period, dl_runtime;
+	uint64_t dl_period, dl_runtime;
 	struct sched_attr attr;
 	int flags = 0;
 	int ret;
@@ -715,8 +715,8 @@ int set_reservation(int period, int reservation)
 	if (period > 4)
 		period = 1;
 
-	dl_period = period * 1000 * 1000 * 1000;
-	dl_runtime = dl_period * reservation / 100;
+	dl_period = period * 1000ULL * 1000ULL * 1000ULL;
+	dl_runtime = dl_period * reservation / 100ULL;
 
 	memset(&attr, 0, sizeof(attr));
 	attr.size = sizeof(attr);
@@ -731,7 +731,7 @@ int set_reservation(int period, int reservation)
 		return ret;
 	}
 
-	log_msg("successfully set %d%% SCHED_DEADLINE reservation runtime/period = %lld/%lld\n",
+	log_msg("successfully set %d%% SCHED_DEADLINE reservation runtime/period = %"PRIu64"/%"PRIu64"\n",
 		reservation, dl_runtime, dl_period);
 	return 0;
 }
@@ -920,7 +920,7 @@ int set_cpu_affinity(char *cpu_list)
 
 	retval = sched_setaffinity(getpid(), sizeof(set), &set);
 	if (retval == -1) {
-		log_msg("self-affinity: error setting affinity %d", strerror(errno));
+		log_msg("self-affinity: error setting affinity: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -1182,13 +1182,8 @@ int parse_args(int argc, char **argv)
 	if (config_boost_duration > config_starving_threshold)
 		usage("the boost duration cannot be longer than the starving threshold ");
 
-	if (config_force_fifo && config_single_threaded) {
-		log_msg("-F/--force_fifo does not work in single-threaded mode\n");
-		log_msg("falling back to the adaptive mode\n");
-		config_adaptive_multi_threaded = 1;
-		config_single_threaded = 0;
-		config_aggressive = 0;
-	}
+	if (config_force_fifo && config_single_threaded)
+		usage("--force_fifo does not work in single-threaded mode");
 
 	if (config_reservation && (config_aggressive || config_adaptive_multi_threaded))
 		usage("-R/--reservation only works in the single-threaded mode");
@@ -1231,10 +1226,11 @@ int parse_args(int argc, char **argv)
  * @param buf_size The size of the mount_path_buf.
  * @return 0 on success (debugfs mount point found), -1 if not found or on error.
  */
-static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size) {
+static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size)
+{
 	FILE *fp;
 	struct mntent *mnt;
-	int ret = 0;
+	int ret = -1;
 
 	fp = setmntent("/proc/mounts", "r");
 	if (!fp) {
@@ -1249,9 +1245,9 @@ static int find_debugfs_mount_point(char *mount_path_buf, size_t buf_size) {
 		if (strlen(mnt->mnt_dir) < buf_size) {
 			strncpy(mount_path_buf, mnt->mnt_dir, buf_size - 1);
 			mount_path_buf[buf_size - 1] = '\0';
+			ret = 0;
 		} else {
 			warn("Buffer too small for debugfs mount path: %s\n", mnt->mnt_dir);
-			ret = -1;
 		}
 
 		break;
@@ -1380,7 +1376,8 @@ int read_proc_stat(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
-	buffer[position-1] = '\0';
+	if (position > 0)
+		buffer[position-1] = '\0';
 
 	close(fd);
 

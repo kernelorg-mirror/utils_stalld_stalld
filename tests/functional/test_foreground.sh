@@ -22,69 +22,42 @@ setup_test_environment
 require_root
 
 # Test 1: Without -f flag, stalld should daemonize
-echo "Test 1: stalld daemonizes by default"
+test_section "Test 1: stalld daemonizes by default"
 start_stalld -l -t 5
-sleep 2
 
-# Check if stalld is running
-if assert_process_running "${STALLD_PID}" "stalld should be running"; then
-	# Check parent process - should be init (PID 1) or systemd
-	PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
-	if [ "${PARENT_PID}" == "1" ] || [ "${PARENT_PID}" == "2" ]; then
-		pass "stalld daemonized (parent is init/kthreadd)"
-	else
-		# On modern systems with session leaders, ppid might not be 1
-		# Just verify it's not our shell's PID
-		if [ "${PARENT_PID}" != "$$" ]; then
-			pass "stalld daemonized (parent is not test shell)"
-		else
-			fail "stalld did not daemonize (parent is test shell)"
-		fi
-	fi
+assert_process_running "${STALLD_PID}" "stalld should be running"
+
+PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
+if [ "${PARENT_PID}" == "1" ] || [ "${PARENT_PID}" == "2" ]; then
+	pass "stalld daemonized (parent is init/kthreadd)"
+else
+	assert_success "stalld daemonized (parent is not test shell)" test "${PARENT_PID}" != "$$"
 fi
 
 stop_stalld
 
 # Test 2: With -f flag, stalld should stay in foreground
-echo ""
-echo "Test 2: stalld stays in foreground with -f"
+test_section "Test 2: stalld stays in foreground with -f"
 
 # Start stalld in foreground but in background job
 start_stalld -f -l -t 5
-sleep 2
 
-# Check if stalld is running
-if assert_process_running "${STALLD_PID}" "stalld should be running with -f"; then
-	# With -f, it should NOT daemonize, parent should be our shell
-	PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
+assert_process_running "${STALLD_PID}" "stalld should be running with -f"
 
-	# The parent might be the subshell from start_stalld, not directly our shell
-	# So we just verify it's not PID 1
-	if [ "${PARENT_PID}" != "1" ]; then
-		pass "stalld did not daemonize with -f (parent is not init)"
-	else
-		fail "stalld daemonized even with -f flag"
-	fi
-fi
+PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
+assert_success "stalld did not daemonize with -f (parent is not init)" test "${PARENT_PID}" != "1"
 
 stop_stalld
 
 # Test 3: With -v flag, foreground mode should be implicit
-echo ""
-echo "Test 3: -v implies foreground mode"
+test_section "Test 3: -v implies foreground mode"
 
 start_stalld -v -l -t 5
-sleep 2
 
-if assert_process_running "${STALLD_PID}" "stalld should be running with -v"; then
-	PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
+assert_process_running "${STALLD_PID}" "stalld should be running with -v"
 
-	if [ "${PARENT_PID}" != "1" ]; then
-		pass "-v implies foreground mode"
-	else
-		fail "-v should imply foreground mode"
-	fi
-fi
+PARENT_PID=$(ps -o ppid= -p ${STALLD_PID} 2>/dev/null | tr -d ' ')
+assert_success "-v implies foreground mode" test "${PARENT_PID}" != "1"
 
 stop_stalld
 

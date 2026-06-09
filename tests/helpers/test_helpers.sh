@@ -105,6 +105,174 @@ end_test() {
 	fi
 }
 
+# Print a section banner for a test sub-section or summary block.
+test_section() {
+	local title="$1"
+	log ""
+	log "=========================================="
+	log "${title}"
+	log "=========================================="
+}
+
+# Tear down starvation workloads and stalld between test sections.
+# Usage: cleanup_scenario [PID ...]
+cleanup_scenario() {
+	for pid in "$@"; do
+		if [ -n "$pid" ]; then
+			send_signal TERM "$pid"
+			wait "$pid" 2>/dev/null || true
+		fi
+	done
+	stop_stalld
+}
+
+# Find the child of a starvation_gen process most likely to be starving.
+# When multiple children exist, selects the one with the lowest scheduling
+# priority (highest kernel prio value) since that task loses the CPU to
+# higher-priority siblings.
+# Usage: tracked_pid=$(find_starved_child <parent_pid>)
+find_starved_child() {
+	local parent_pid=$1
+	local candidate=""
+	local max_prio=-100
+	local prio
+	for child in $(pgrep -P "${parent_pid}" 2>/dev/null); do
+		if [ -d "/proc/${child}" ]; then
+			prio=$(get_sched_priority "${child}" 2>/dev/null)
+			prio=${prio:--1}
+			if [ "${prio}" -gt "${max_prio}" ] 2>/dev/null; then
+				candidate="${child}"
+				max_prio="${prio}"
+			fi
+		fi
+	done
+
+	if [ -n "${candidate}" ]; then
+		echo "${candidate}"
+		return 0
+	fi
+	return 1
+}
+
+# Assert that stalld detects a starving task within the timeout.
+# Usage: assert_starvation_detected <log_file> <message> [timeout] [cpu]
+assert_starvation_detected() {
+	local log_file=$1
+	local message=${2:-"Starvation detected"}
+	local timeout=${3:-15}
+	local cpu=${4:-}
+
+	if wait_for_starvation_detected "${log_file}" "${timeout}" "${cpu}"; then
+		pass "${message}"
+	else
+		log "Log contents:"
+		cat "${log_file}"
+		fail "${message}"
+	fi
+}
+
+# Assert that stalld boosts a starving task within the timeout.
+# Usage: assert_boost_detected <log_file> <message> [timeout]
+assert_boost_detected() {
+	local log_file=$1
+	local message=${2:-"Boost detected"}
+	local timeout=${3:-15}
+
+	if wait_for_boost_detected "${log_file}" "${timeout}"; then
+		pass "${message}"
+	else
+		log "Log contents:"
+		cat "${log_file}"
+		fail "${message}"
+	fi
+}
+
+# Assert that a log file contains (or does not contain) a pattern.
+#
+# Usage: assert_log_contains [--negate] [--ignore-case] <log_file> <pattern> <message>
+assert_log_contains() {
+	local negate=0
+	local grep_opts="-q -e"
+	while true; do
+		case "$1" in
+			--negate) negate=1; shift ;;
+			--ignore-case) grep_opts="-q -i -e"; shift ;;
+			*) break ;;
+		esac
+	done
+	local log_file=$1
+	local pattern=$2
+	local message=$3
+
+	local found=0
+	grep ${grep_opts} "${pattern}" -- "${log_file}" 2>/dev/null && found=1
+
+	if [ $negate -eq 1 ]; then
+		found=$((1 - found))
+	fi
+
+	if [ $found -eq 1 ]; then
+		pass "${message}"
+	else
+		if [ $negate -eq 1 ]; then
+			log "    Pattern '${pattern}' found in ${log_file} but should not be"
+		else
+			log "    Pattern '${pattern}' not found in ${log_file}"
+		fi
+		fail "${message}"
+	fi
+}
+
+# Assert that stalld rejects invalid arguments and exits non-zero.
+# Usage: assert_stalld_rejects <message> [stalld_args...]
+assert_stalld_rejects() {
+	local message=$1
+	shift
+
+	local log="/tmp/stalld_reject_$$.log"
+	CLEANUP_FILES+=("${log}")
+	timeout 5 ${TEST_ROOT}/../stalld ${BACKEND_FLAG} "$@" > "${log}" 2>&1
+	local ret=$?
+	if [ $ret -ne 0 ] && [ $ret -ne 124 ]; then
+		pass "${message}"
+	else
+		log "stalld output:"
+		cat "${log}"
+		fail "${message}"
+	fi
+	rm -f "${log}"
+}
+
+# Assert that a command exits successfully (or unsuccessfully with --negate).
+#
+# Without --negate the assertion passes when the command returns zero.
+# With --negate the assertion passes when the command returns non-zero.
+#
+# Usage: assert_success <message> <command> [args...]
+#        assert_success --negate <message> <command> [args...]
+assert_success() {
+	local negate=0
+	if [ "$1" = "--negate" ]; then
+		negate=1
+		shift
+	fi
+	local message=$1
+	shift
+
+	"$@" >/dev/null 2>&1
+	local success=$(( $? == 0 ))
+
+	if [ $negate -eq 1 ]; then
+		success=$((1 - success))
+	fi
+
+	if [ $success -eq 1 ]; then
+		pass "${message}"
+	else
+		fail "${message}"
+	fi
+}
+
 # Record a test pass with a description message.
 #
 # Usage: pass "description"
@@ -114,13 +282,15 @@ pass() {
 	TEST_PASSED=$((TEST_PASSED + 1))
 }
 
-# Record a test failure with a description message.
+# Record a test failure and abort the test immediately.
 #
 # Usage: fail "description"
 fail() {
 	local message=${1:-""}
 	log "✗ FAIL: ${message}"
 	TEST_FAILED=$((TEST_FAILED + 1))
+	end_test
+	exit 1
 }
 
 # Assert functions
@@ -131,12 +301,10 @@ assert_equals() {
 
 	if [ "${expected}" == "${actual}" ]; then
 		pass "${message}"
-		return 0
 	else
-		fail "${message}"
 		log "    Expected: ${expected}"
 		log "    Actual:   ${actual}"
-		return 1
+		fail "${message}"
 	fi
 }
 
@@ -147,11 +315,9 @@ assert_contains() {
 
 	if echo "${haystack}" | grep -q "${needle}"; then
 		pass "${message}"
-		return 0
 	else
-		fail "${message}"
 		log "    String '${needle}' not found"
-		return 1
+		fail "${message}"
 	fi
 }
 
@@ -162,11 +328,9 @@ assert_not_contains() {
 
 	if ! echo "${haystack}" | grep -q "${needle}"; then
 		pass "${message}"
-		return 0
 	else
-		fail "${message}"
 		log "    String '${needle}' found but should not be present"
-		return 1
+		fail "${message}"
 	fi
 }
 
@@ -176,10 +340,8 @@ assert_file_exists() {
 
 	if [ -f "${file}" ]; then
 		pass "${message}"
-		return 0
 	else
 		fail "${message}"
-		return 1
 	fi
 }
 
@@ -189,23 +351,49 @@ assert_file_not_exists() {
 
 	if [ ! -f "${file}" ]; then
 		pass "${message}"
-		return 0
 	else
 		fail "${message}"
-		return 1
 	fi
+}
+
+process_alive() {
+	kill -0 "$1" 2>/dev/null
+}
+
+# Poll for a process to exit within a timeout.
+# Returns 0 if the process exits, 1 if still alive after timeout.
+#
+# Usage: wait_for_process_exit <pid> <timeout_seconds>
+wait_for_process_exit() {
+	local pid="$1"
+	local timeout="$2"
+	local elapsed=0
+
+	while process_alive "${pid}" && [ ${elapsed} -lt ${timeout} ]; do
+		for i in $(seq 1 10); do
+			sleep 0.1
+			if ! process_alive "${pid}"; then
+				return 0
+			fi
+		done
+		elapsed=$((elapsed + 1))
+	done
+
+	! process_alive "${pid}"
+}
+
+send_signal() {
+	kill -"$1" "$2" 2>/dev/null || true
 }
 
 assert_process_running() {
 	local pid=$1
 	local message=${2:-"Process ${pid} should be running"}
 
-	if kill -0 ${pid} 2>/dev/null; then
+	if process_alive ${pid}; then
 		pass "${message}"
-		return 0
 	else
 		fail "${message}"
-		return 1
 	fi
 }
 
@@ -213,12 +401,10 @@ assert_process_not_running() {
 	local pid=$1
 	local message=${2:-"Process ${pid} should not be running"}
 
-	if ! kill -0 ${pid} 2>/dev/null; then
+	if ! process_alive ${pid}; then
 		pass "${message}"
-		return 0
 	else
 		fail "${message}"
-		return 1
 	fi
 }
 
@@ -320,7 +506,7 @@ start_stalld() {
 
 			# If pgrep didn't find it, fall back to the shell PID
 			if [ -z "${STALLD_PID}" ]; then
-				if kill -0 ${shell_pid} 2>/dev/null; then
+				if process_alive ${shell_pid}; then
 					STALLD_PID=${shell_pid}
 				fi
 			fi
@@ -332,11 +518,11 @@ start_stalld() {
 				sleep 0.5
 
 				# Check if shell_pid has exited (daemonization complete)
-				if ! kill -0 ${shell_pid} 2>/dev/null; then
+				if ! process_alive ${shell_pid}; then
 					# Shell process exited, daemon should be running
 					# Use pgrep -n to find the newest stalld process
 					STALLD_PID=$(pgrep -n -x stalld 2>/dev/null)
-					if [ -n "${STALLD_PID}" ] && kill -0 ${STALLD_PID} 2>/dev/null; then
+					if [ -n "${STALLD_PID}" ] && process_alive ${STALLD_PID}; then
 						break
 					fi
 				fi
@@ -358,7 +544,7 @@ start_stalld() {
 		return 1
 	fi
 
-	if ! kill -0 ${STALLD_PID} 2>/dev/null; then
+	if ! process_alive ${STALLD_PID}; then
 		echo -e "${RED}ERROR: stalld PID ${STALLD_PID} is not running${NC}"
 		return 1
 	fi
@@ -373,32 +559,23 @@ start_stalld() {
 # SIGKILL if needed. Guarantees the process is dead before
 # returning so callers do not need post-stop sleeps.
 stop_stalld() {
-	if [ -n "${STALLD_PID}" ]; then
-		if kill -0 ${STALLD_PID} 2>/dev/null; then
-			# Try graceful shutdown first (SIGTERM)
-			kill ${STALLD_PID} 2>/dev/null || true
-
-			# Poll for graceful exit (up to 5 seconds)
-			local timeout=5
-			local elapsed=0
-			while kill -0 ${STALLD_PID} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
-				sleep 1
-				elapsed=$((elapsed + 1))
-			done
-
-			# Escalate to SIGKILL if still running
-			if kill -0 ${STALLD_PID} 2>/dev/null; then
-				kill -9 ${STALLD_PID} 2>/dev/null || true
-				# Poll for forced termination (up to 5 seconds)
-				elapsed=0
-				while kill -0 ${STALLD_PID} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
-					sleep 1
-					elapsed=$((elapsed + 1))
-				done
-			fi
-		fi
-		STALLD_PID=""
+	if [ -z "${STALLD_PID}" ]; then
+		return
 	fi
+
+	if process_alive ${STALLD_PID}; then
+		# Try graceful shutdown first (SIGTERM)
+		send_signal TERM ${STALLD_PID}
+
+		# Poll for graceful exit (up to 5 seconds)
+		if ! wait_for_process_exit ${STALLD_PID} 5; then
+			# Escalate to SIGKILL if still running
+			send_signal KILL ${STALLD_PID}
+			# Poll for forced termination (up to 5 seconds)
+			wait_for_process_exit ${STALLD_PID} 5
+		fi
+	fi
+	STALLD_PID=""
 }
 
 # Kill any existing stalld processes (cleanup from previous runs)
@@ -409,14 +586,14 @@ kill_existing_stalld() {
 		echo "Killing existing stalld processes: ${pids}"
 		for pid in ${pids}; do
 			# Try graceful shutdown first
-			kill ${pid} 2>/dev/null || true
+			send_signal TERM ${pid}
 		done
 		sleep 0.5
 		# Force kill any remaining
 		pids=$(pgrep -x stalld 2>/dev/null)
 		if [ -n "${pids}" ]; then
 			for pid in ${pids}; do
-				kill -9 ${pid} 2>/dev/null || true
+				send_signal KILL ${pid}
 			done
 			sleep 0.2
 		fi
@@ -443,35 +620,17 @@ cleanup() {
 	# Stop stalld
 	stop_stalld
 
-	# Kill any starvation generators first (these often have child processes)
-	# Use pkill which handles process trees better
-	pkill -9 -f starvation_gen 2>/dev/null || true
-
-	# Small delay to let processes terminate
-	sleep 0.2
-
 	# Kill any tracked processes
 	# Use SIGKILL (-9) and ignore EPERM errors (process may have different privileges)
 	for pid in "${CLEANUP_PIDS[@]}"; do
 		if [ -n "${pid}" ] && [ "${pid}" -gt 0 ] 2>/dev/null; then
 			# Check if process exists
-			if kill -0 ${pid} 2>/dev/null; then
-				kill ${pid} 2>/dev/null || true
+			if process_alive "${pid}"; then
+				send_signal TERM "${pid}"
 
-				local timeout=5
-				local elapsed=0
-				while kill -0 ${pid} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
-					sleep 1
-					elapsed=$((elapsed + 1))
-				done
-
-				if kill -0 ${pid} 2>/dev/null; then
-					kill -9 ${pid} 2>/dev/null || true
-					elapsed=0
-					while kill -0 ${pid} 2>/dev/null && [ ${elapsed} -lt ${timeout} ]; do
-						sleep 1
-						elapsed=$((elapsed + 1))
-					done
+				if ! wait_for_process_exit "${pid}" 5; then
+					send_signal KILL "${pid}"
+					wait_for_process_exit "${pid}" 5
 				fi
 			fi
 		fi
@@ -536,7 +695,7 @@ wait_for_log_message() {
 # Usage: wait_for_stalld_ready <log_file> [timeout]
 wait_for_stalld_ready() {
 	local log_file=$1
-	local timeout=${2:-15}
+	local timeout=${2:-5}
 	wait_for_log_message "checking cpu\|waiting tasks\|skipping" "${timeout}" "${log_file}"
 }
 
@@ -545,7 +704,7 @@ wait_for_stalld_ready() {
 # Usage: wait_for_starvation_detected <log_file> [timeout] [cpu]
 wait_for_starvation_detected() {
 	local log_file=$1
-	local timeout=${2:-30}
+	local timeout=${2:-15}
 	local cpu=${3:-}
 	local pattern="starved on CPU"
 	if [ -n "${cpu}" ]; then
@@ -559,8 +718,27 @@ wait_for_starvation_detected() {
 # Usage: wait_for_boost_detected <log_file> [timeout]
 wait_for_boost_detected() {
 	local log_file=$1
-	local timeout=${2:-30}
+	local timeout=${2:-15}
 	wait_for_log_message "boosted pid" "${timeout}" "${log_file}"
+}
+
+# Wait until a log file contains at least N matches of a pattern.
+#
+# Usage: wait_for_n_log_matches <pattern> <count> <log_file> [timeout]
+wait_for_n_log_matches() {
+	local pattern=$1
+	local count=$2
+	local log_file=$3
+	local timeout=${4:-15}
+	local end=$((SECONDS + timeout))
+
+	while [ $SECONDS -lt $end ]; do
+		local matches
+		matches=$(grep -c "${pattern}" "${log_file}" 2>/dev/null || true)
+		[ "${matches:-0}" -ge "${count}" ] && return 0
+		sleep 1
+	done
+	return 1
 }
 
 # Get thread scheduling policy
@@ -1068,8 +1246,19 @@ init_functional_test() {
 	STALLD_LOG="/tmp/stalld_${log_suffix}_$$.log"
 	CLEANUP_FILES+=("${STALLD_LOG}")
 
+	if [ ! -x "${STARVE_GEN}" ]; then
+		echo -e "${YELLOW}SKIP: starvation_gen not found or not executable${NC}"
+		exit 77
+	fi
+
+	# Build backend flag for direct stalld invocations
+	BACKEND_FLAG=""
+	if [ -n "${STALLD_TEST_BACKEND}" ]; then
+		BACKEND_FLAG="-b ${STALLD_TEST_BACKEND}"
+	fi
+
 	# Export variables for use in test
-	export TEST_CPU STALLD_CPU STARVE_GEN STALLD_LOG
+	export TEST_CPU STALLD_CPU STARVE_GEN STALLD_LOG BACKEND_FLAG
 }
 
 # Start starvation_gen in background with readiness detection
@@ -1103,7 +1292,7 @@ start_starvation_gen() {
 	local timeout=10
 	local elapsed=0
 	while [ $elapsed -lt $timeout ]; do
-		if ! kill -0 ${STARVE_PID} 2>/dev/null; then
+		if ! process_alive ${STARVE_PID}; then
 			echo -e "${RED}ERROR: starvation_gen exited prematurely${NC}"
 			echo "  Log contents:"
 			cat "${STARVE_LOG}"
@@ -1120,21 +1309,22 @@ start_starvation_gen() {
 	echo -e "${RED}ERROR: starvation_gen did not become ready within ${timeout}s${NC}"
 	echo "  Log contents:"
 	cat "${STARVE_LOG}"
-	kill ${STARVE_PID} 2>/dev/null
+	send_signal TERM ${STARVE_PID}
 	sleep 1
-	if kill -0 ${STARVE_PID} 2>/dev/null; then
-		kill -9 ${STARVE_PID} 2>/dev/null
+	if process_alive ${STARVE_PID}; then
+		send_signal KILL ${STARVE_PID}
 	fi
 	return 1
 }
 
 # Export functions for use in tests
-export -f start_test end_test
+export -f start_test end_test test_section cleanup_scenario find_starved_child
+export -f assert_starvation_detected assert_boost_detected assert_stalld_rejects assert_log_contains assert_success
 export -f pass fail assert_equals assert_contains assert_not_contains
 export -f assert_file_exists assert_file_not_exists
-export -f assert_process_running assert_process_not_running
+export -f process_alive wait_for_process_exit send_signal assert_process_running assert_process_not_running
 export -f start_stalld stop_stalld kill_existing_stalld cleanup
-export -f wait_for_log_message wait_for_stalld_ready wait_for_starvation_detected wait_for_boost_detected
+export -f wait_for_log_message wait_for_stalld_ready wait_for_starvation_detected wait_for_boost_detected wait_for_n_log_matches
 export -f get_thread_policy get_thread_priority
 export -f create_cpu_load
 export -f detect_default_backend is_backend_available get_available_backends start_stalld_with_backend

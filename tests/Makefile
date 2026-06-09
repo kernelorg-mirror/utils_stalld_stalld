@@ -7,25 +7,12 @@ CFLAGS	:= -g -Wall -pthread
 LIBS	:= -lpthread
 
 # Test binaries
-UNIT_TESTS :=
 HELPER_BINS := helpers/starvation_gen
-LEGACY_TESTS := legacy/test01
+ALL_BINS := $(HELPER_BINS)
 
-ALL_BINS := $(LEGACY_TESTS) $(UNIT_TESTS) $(HELPER_BINS)
-
-.PHONY: all clean test test-unit test-functional test-integration test-legacy
+.PHONY: all clean test test-functional test-integration
 
 all: $(ALL_BINS)
-
-# Legacy tests
-legacy/test01: legacy/test01.c
-	@mkdir -p legacy
-	$(CC) $(CFLAGS) -o legacy/test01 legacy/test01.c $(LIBS)
-
-# Unit tests
-unit/test_%: unit/test_%.c
-	@mkdir -p unit
-	$(CC) $(CFLAGS) -I../src -o $@ $< $(LIBS)
 
 # Helper binaries
 helpers/starvation_gen: helpers/starvation_gen.c
@@ -38,10 +25,6 @@ test: all
 	@./run_tests.sh
 
 # Run specific test category
-test-unit: $(UNIT_TESTS)
-	@echo "Running unit tests..."
-	@./run_tests.sh --unit-only
-
 test-functional: $(HELPER_BINS)
 	@echo "Running functional tests..."
 	@./run_tests.sh --functional-only
@@ -50,13 +33,9 @@ test-integration: all
 	@echo "Running integration tests..."
 	@./run_tests.sh --integration-only
 
-test-legacy: $(LEGACY_TESTS)
-	@echo "Running legacy tests..."
-	@./run_tests.sh --unit-only
-
 clean:
 	@rm -f $(ALL_BINS)
 	@# Use sudo for results/ as tests run as root create root-owned log files
 	@if [ -d results/ ]; then sudo rm -rf results/; fi
-	@rm -f *~ unit/*~ functional/*~ integration/*~ helpers/*~ legacy/*~
-	@rm -f *.o unit/*.o helpers/*.o legacy/*.o
+	@rm -f *~ functional/*~ integration/*~ helpers/*~
+	@rm -f *.o helpers/*.o

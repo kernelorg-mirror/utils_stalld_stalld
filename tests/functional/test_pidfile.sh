@@ -13,36 +13,14 @@ source "${TEST_ROOT}/helpers/test_helpers.sh"
 # Parse command-line options
 parse_test_options "$@" || exit $?
 
-start_test "PID File Option (-P)"
-
-# Setup test environment
-setup_test_environment
-
-# Require root for this test
-require_root
-
-# Check RT throttling
-if ! check_rt_throttling; then
-    echo -e "${YELLOW}SKIP: RT throttling must be disabled for this test${NC}"
-    exit 77
-fi
-
-# Setup paths
-STALLD_LOG="/tmp/stalld_test_pidfile_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG}")
+init_functional_test "PID File Option (-P)" "test_pidfile"
 
 #=============================================================================
 # Test 1: Default pidfile location (no -P specified)
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 1: Default behavior (no -P specified)"
-log "=========================================="
+test_section "Test 1: Default behavior (no -P specified)"
 
 start_stalld -l -t 5
-
-# Give stalld time to create pidfile
-sleep 2
 
 # Check common default pidfile locations
 default_found=0
@@ -53,11 +31,7 @@ for pidfile in /var/run/stalld.pid /run/stalld.pid; do
 
         # Verify PID matches
         pid_from_file=$(cat "$pidfile")
-        if [ "$pid_from_file" = "${STALLD_PID}" ]; then
-            pass "Default pidfile contains correct PID"
-        else
-            fail "Default pidfile PID ($pid_from_file) doesn't match stalld PID (${STALLD_PID})"
-        fi
+        assert_success "Default pidfile contains correct PID" test "$pid_from_file" = "${STALLD_PID}"
         break
     fi
 done
@@ -71,10 +45,7 @@ stop_stalld
 #=============================================================================
 # Test 2: Custom pidfile location
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 2: Custom pidfile location"
-log "=========================================="
+test_section "Test 2: Custom pidfile location"
 
 custom_pidfile="/tmp/stalld_test_pidfile_custom_$$.pid"
 CLEANUP_FILES+=("${custom_pidfile}")
@@ -82,31 +53,16 @@ CLEANUP_FILES+=("${custom_pidfile}")
 # Ensure pidfile doesn't exist before test
 rm -f "${custom_pidfile}"
 
-STALLD_LOG2="/tmp/stalld_test_pidfile_test2_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG2}")
-
 log "Starting stalld with custom pidfile: ${custom_pidfile}"
 start_stalld -l -t 5 --pidfile "${custom_pidfile}"
-sleep 2
 
-# Verify pidfile was created
-if [ -f "${custom_pidfile}" ]; then
-    pass "Custom pidfile created at ${custom_pidfile}"
+assert_file_exists "${custom_pidfile}" "Custom pidfile created at ${custom_pidfile}"
 
-    # Verify content
-    pid_from_file=$(cat "${custom_pidfile}")
-    if [ "$pid_from_file" = "${STALLD_PID}" ]; then
-        pass "Custom pidfile contains correct PID ($pid_from_file)"
-    else
-        fail "Custom pidfile PID ($pid_from_file) doesn't match stalld PID (${STALLD_PID})"
-    fi
-else
-    fail "Custom pidfile not created at ${custom_pidfile}"
-fi
+pid_from_file=$(cat "${custom_pidfile}")
+assert_success "Custom pidfile contains correct PID" test "$pid_from_file" = "${STALLD_PID}"
 
 # Test 3: Verify pidfile removed on clean shutdown
-log ""
-log "Test 3: Verify pidfile removed on clean shutdown"
+test_section "Test 3: Verify pidfile removed on clean shutdown"
 stop_stalld
 
 if [ ! -f "${custom_pidfile}" ]; then
@@ -119,65 +75,39 @@ fi
 #=============================================================================
 # Test 4: Custom pidfile in /tmp
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 4: Custom pidfile in /tmp directory"
-log "=========================================="
+test_section "Test 4: Custom pidfile in /tmp directory"
 
 tmp_pidfile="/tmp/stalld_test_tmp_$$.pid"
 CLEANUP_FILES+=("${tmp_pidfile}")
 rm -f "${tmp_pidfile}"
 
-STALLD_LOG4="/tmp/stalld_test_pidfile_test4_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG4}")
-
 log "Starting stalld with /tmp pidfile: ${tmp_pidfile}"
 start_stalld -l -t 5 --pidfile "${tmp_pidfile}"
-sleep 2
 
-if [ -f "${tmp_pidfile}" ]; then
-    pass "Pidfile created in /tmp directory"
+assert_file_exists "${tmp_pidfile}" "Pidfile created in /tmp directory"
 
-    pid_from_file=$(cat "${tmp_pidfile}")
-    if [ "$pid_from_file" = "${STALLD_PID}" ]; then
-        pass "/tmp pidfile contains correct PID"
-    else
-        fail "/tmp pidfile has incorrect PID"
-    fi
-else
-    fail "Pidfile not created in /tmp"
-fi
+pid_from_file=$(cat "${tmp_pidfile}")
+assert_success "/tmp pidfile contains correct PID" test "$pid_from_file" = "${STALLD_PID}"
 
 stop_stalld
 
 #=============================================================================
 # Test 5: Test with foreground mode
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 5: Pidfile with foreground mode (-f)"
-log "=========================================="
+test_section "Test 5: Pidfile with foreground mode (-f)"
 
 fg_pidfile="/tmp/stalld_test_pidfile_foreground_$$.pid"
 CLEANUP_FILES+=("${fg_pidfile}")
 rm -f "${fg_pidfile}"
 
-STALLD_LOG5="/tmp/stalld_test_pidfile_test5_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG5}")
-
 log "Starting stalld in foreground mode with pidfile: ${fg_pidfile}"
 start_stalld -f -v -l -t 5 --pidfile "${fg_pidfile}"
-sleep 2
 
 if [ -f "${fg_pidfile}" ]; then
     pass "Pidfile created in foreground mode"
 
     pid_from_file=$(cat "${fg_pidfile}")
-    if [ "$pid_from_file" = "${STALLD_PID}" ]; then
-        pass "Foreground mode pidfile contains correct PID"
-    else
-        fail "Foreground mode pidfile has incorrect PID"
-    fi
+    assert_success "Foreground mode pidfile contains correct PID" test "$pid_from_file" = "${STALLD_PID}"
 else
     log "⚠ WARNING: Pidfile not created in foreground mode (may be expected)"
 fi
@@ -187,73 +117,29 @@ stop_stalld
 #=============================================================================
 # Test 6: Invalid pidfile path (permission denied)
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 6: Invalid pidfile path (permission denied)"
-log "=========================================="
+test_section "Test 6: Invalid pidfile path (permission denied)"
 
-# Use a non-existent parent directory so fopen() fails even as root
-invalid_pidfile="/nonexistent_${$}/stalld.pid"
-
-INVALID_LOG="/tmp/stalld_test_pidfile_invalid_$$.log"
-CLEANUP_FILES+=("${INVALID_LOG}")
-
-# Add backend flag for consistency
-BACKEND_FLAG=""
-if [ -n "${STALLD_TEST_BACKEND}" ]; then
-    BACKEND_FLAG="-b ${STALLD_TEST_BACKEND}"
-fi
-
-log "Testing invalid pidfile path: ${invalid_pidfile}"
-timeout 5 ${TEST_ROOT}/../stalld -f -v ${BACKEND_FLAG} -l -t 5 --pidfile "${invalid_pidfile}" > "${INVALID_LOG}" 2>&1
-ret=$?
-
-if [ $ret -ne 0 ] && [ $ret -ne 124 ]; then
-    pass "Invalid pidfile path rejected with error"
-else
-    fail "stalld did not reject invalid pidfile path"
-fi
-
-# Cleanup
-chmod 755 "${test_dir}"
+log "Testing invalid pidfile path"
+assert_stalld_rejects "Invalid pidfile path rejected with error" -f -v -l -t 5 --pidfile "/nonexistent_$$/stalld.pid"
 
 #=============================================================================
 # Test 7: Verify pidfile is readable by other processes
 #=============================================================================
-log ""
-log "=========================================="
-log "Test 7: Verify pidfile is readable"
-log "=========================================="
+test_section "Test 7: Verify pidfile is readable"
 
 readable_pidfile="/tmp/stalld_test_pidfile_readable_$$.pid"
 CLEANUP_FILES+=("${readable_pidfile}")
 rm -f "${readable_pidfile}"
 
-STALLD_LOG7="/tmp/stalld_test_pidfile_test7_$$.log"
-CLEANUP_FILES+=("${STALLD_LOG7}")
-
 log "Starting stalld with readable pidfile: ${readable_pidfile}"
 start_stalld -l -t 5 --pidfile "${readable_pidfile}"
-sleep 2
 
-if [ -f "${readable_pidfile}" ]; then
-    # Try to read the pidfile as a regular user would
-    if cat "${readable_pidfile}" > /dev/null 2>&1; then
-        pass "Pidfile is readable"
+assert_file_exists "${readable_pidfile}" "Pidfile created"
+assert_success "Pidfile is readable" cat "${readable_pidfile}"
 
-        # Check permissions
-        perms=$(stat -c "%a" "${readable_pidfile}" 2>/dev/null || stat -f "%Lp" "${readable_pidfile}" 2>/dev/null)
-        log "ℹ INFO: Pidfile permissions: $perms"
-    else
-        fail "Pidfile not readable"
-    fi
-else
-    fail "Pidfile not created"
-fi
+perms=$(stat -c "%a" "${readable_pidfile}" 2>/dev/null || stat -f "%Lp" "${readable_pidfile}" 2>/dev/null)
+log "ℹ INFO: Pidfile permissions: $perms"
 
 stop_stalld
-
-log ""
-log "All pidfile tests completed"
 
 end_test
