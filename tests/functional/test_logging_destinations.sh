@@ -143,6 +143,10 @@ assert_success "combined logging produces output" test -s "${LOG_FILE}"
 
 stop_stalld
 
+# Flush any pending journal writes from previous tests that used -s
+journalctl --sync 2>/dev/null
+sleep 1
+
 # Test 5: No syslog without -s flag
 test_section "Test 5: No syslog without -s flag"
 
